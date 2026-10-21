@@ -11,13 +11,13 @@ Endpoints:
 """
 
 from examples.shop.app import create_app
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 
 app = create_app()
 
 mcp = FastAPIMCP(
     app,
-    name="fastapi-gql-mcp demo",
+    name="fastapi-mcp-neo demo",
     allow_mutation=True,
     # The demo app stays under the 25-route threshold, so "auto" would pick
     # simple mode (get_schema + graphql_query). Force progressive to

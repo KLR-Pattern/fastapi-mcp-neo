@@ -24,7 +24,7 @@ from graphql import GraphQLError
 from httpx import ASGITransport, AsyncClient, Response
 from opentelemetry import trace
 
-from fastapi_gql_mcp.scanner import RouteInfo
+from fastapi_mcp_neo.scanner import RouteInfo
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,7 @@ class RouteInvoker:
                 self._lifespan = manager
             self._client = AsyncClient(
                 transport=ASGITransport(app=self._app),
-                base_url="http://fastapi-gql-mcp.local",
+                base_url="http://fastapi-mcp-neo.local",
                 timeout=self._timeout,
             )
 

@@ -1,7 +1,7 @@
-Why fastapi-gql-mcp
+Why fastapi-mcp-neo
 Turn FastAPI into an agent-friendly, context-efficient MCP server
 
-fastapi-gql-mcp turns any FastAPI app into an MCP server backed by a
+fastapi-mcp-neo turns any FastAPI app into an MCP server backed by a
 GraphQL schema — with zero changes to your code. An agent gets 2-6
 constant tools instead of one tool per endpoint, composes any routes into
 a single query, and runs as the caller with the caller's own credentials.
@@ -77,5 +77,5 @@ Early-stage (0.x), on PyPI. Suggestions are welcome and get acted on —
 measured evidence and fast iteration over roadmap slides.
 
 One line: MCP gave agents a way to connect; GraphQL gives them a contract
-worth connecting to. fastapi-gql-mcp is the missing three lines of code
+worth connecting to. fastapi-mcp-neo is the missing three lines of code
 in between.

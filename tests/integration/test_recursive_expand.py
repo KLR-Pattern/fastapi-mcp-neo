@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from graphql import GraphQLError, ValidationRule
 from pydantic import BaseModel
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 
 
 class Node(BaseModel):
@@ -412,7 +412,7 @@ class TestSchemaNote:
 
 class TestUnrollLimit:
     async def test_limit_tracks_recursion_budget(self, monkeypatch):
-        from fastapi_gql_mcp.recursive_expand import unroll_limit
+        from fastapi_mcp_neo.recursive_expand import unroll_limit
 
         monkeypatch.setattr("sys.setrecursionlimit", lambda n: None)
         monkeypatch.setattr("sys.getrecursionlimit", lambda: 1000)
@@ -435,7 +435,7 @@ class TestUnrollLimit:
             ]},
         ]}  # 5 levels against a scaffold of 3
 
-        monkeypatch.setattr("fastapi_gql_mcp.handler.unroll_limit", lambda: 3)
+        monkeypatch.setattr("fastapi_mcp_neo.handler.unroll_limit", lambda: 3)
         app = FastAPI()
 
         @app.get("/tree", response_model=Node, tags=["t"])
@@ -455,7 +455,7 @@ class TestUnrollLimit:
         assert any("response is incomplete" in m for m in messages)
 
     async def test_no_floor_error_below_limit(self, monkeypatch):
-        monkeypatch.setattr("fastapi_gql_mcp.handler.unroll_limit", lambda: 10)
+        monkeypatch.setattr("fastapi_mcp_neo.handler.unroll_limit", lambda: 10)
         app = FastAPI()
 
         @app.get("/tree", response_model=Node, tags=["t"])
@@ -506,7 +506,7 @@ class TestUnrollLimit:
         ``limit + 1`` levels serves COMPLETE and silent; deeper data
         occupies the probe and errors definitely. Complete data is never
         flagged."""
-        monkeypatch.setattr("fastapi_gql_mcp.handler.unroll_limit", lambda: 5)
+        monkeypatch.setattr("fastapi_mcp_neo.handler.unroll_limit", lambda: 5)
         app = FastAPI()
 
         @app.get("/tree", response_model=Node, tags=["t"])
@@ -549,7 +549,7 @@ class TestUnrollLimit:
                 node = LNode(name=f"{name}.{i}", next=node)
             return node
 
-        monkeypatch.setattr("fastapi_gql_mcp.handler.unroll_limit", lambda: 3)
+        monkeypatch.setattr("fastapi_mcp_neo.handler.unroll_limit", lambda: 3)
         app = FastAPI()
 
         @app.get("/ll", response_model=LNode, tags=["t"])
@@ -698,7 +698,7 @@ class TestUnrollLimit:
         including depths between the old floor (100) and the real ceiling
         (~82 inverted: depths the old code died on) — serves partial data
         with a definite error instead of blowing the stack."""
-        from fastapi_gql_mcp.recursive_expand import unroll_limit
+        from fastapi_mcp_neo.recursive_expand import unroll_limit
 
         limit = unroll_limit()
         box: dict[str, Any] = {}

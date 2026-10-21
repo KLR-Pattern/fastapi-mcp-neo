@@ -15,9 +15,9 @@ from graphql.language import DocumentNode
 from graphql.validation import validate as real_validate
 from pydantic import BaseModel
 
-import fastapi_gql_mcp.depth_guard as depth_guard_mod
-import fastapi_gql_mcp.handler as handler_mod
-from fastapi_gql_mcp import RouterGraphQLHandler
+import fastapi_mcp_neo.depth_guard as depth_guard_mod
+import fastapi_mcp_neo.handler as handler_mod
+from fastapi_mcp_neo import RouterGraphQLHandler
 
 
 class Out(BaseModel):

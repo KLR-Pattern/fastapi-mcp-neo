@@ -11,14 +11,14 @@ import pytest
 from fastapi import FastAPI
 from graphql import GraphQLError
 
-from fastapi_gql_mcp.invoker import (
+from fastapi_mcp_neo.invoker import (
     GQLMCPRuntimeError,
     RouteInvoker,
     _render_param,
     build_request,
     filter_passthrough_headers,
 )
-from fastapi_gql_mcp.scanner import RouterScanner
+from fastapi_mcp_neo.scanner import RouterScanner
 from tests.support.models import ItemCreate, ItemOut
 
 

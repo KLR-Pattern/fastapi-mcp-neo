@@ -4,7 +4,7 @@ annotations and instructions — via the in-memory fastmcp Client."""
 import pytest
 from fastmcp import Client
 
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 from tests.support.apps import users_app
 from tests.support.mcp import tool_payload
 

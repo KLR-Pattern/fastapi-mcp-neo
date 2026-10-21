@@ -746,7 +746,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fastapi-gql-mcp"
+name = "fastapi-mcp-neo"
 version = "0.12.0"
 source = { editable = "." }
 dependencies = [

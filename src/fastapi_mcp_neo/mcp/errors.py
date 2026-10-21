@@ -1,4 +1,4 @@
-"""Error taxonomy and response envelopes shared by fastapi-gql-mcp MCP tools."""
+"""Error taxonomy and response envelopes shared by fastapi-mcp-neo MCP tools."""
 
 from __future__ import annotations
 

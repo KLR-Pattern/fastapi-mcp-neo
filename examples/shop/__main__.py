@@ -10,7 +10,7 @@ import uvicorn
 def main() -> None:
     port = int(os.environ.get("PORT", "8010"))
     print(
-        "\n  fastapi-gql-mcp demo\n"
+        "\n  fastapi-mcp-neo demo\n"
         "  ─────────────────────────────────────────────────────\n"
         f"  REST docs (swagger):   http://127.0.0.1:{port}/docs\n"
         f"  MCP streamable HTTP:   http://127.0.0.1:{port}/mcp/\n"

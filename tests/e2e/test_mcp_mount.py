@@ -1,7 +1,7 @@
 """MCP mounting: streamable-HTTP endpoints served from a host app, the
 stateless mount flavor, and composed lifespans across multiple mounts."""
 
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 from tests.support.apps import multi_domain_app, users_app
 from tests.support.mcp import http_client, jsonrpc_initialize
 

@@ -9,9 +9,9 @@ from typing import Any, Literal
 
 from fastapi import FastAPI
 
-from fastapi_gql_mcp.domains import DomainRegistry
-from fastapi_gql_mcp.handler import GQLMCPConfigError, RouterGraphQLHandler
-from fastapi_gql_mcp.mcp.tools import register_simple_tools
+from fastapi_mcp_neo.domains import DomainRegistry
+from fastapi_mcp_neo.handler import GQLMCPConfigError, RouterGraphQLHandler
+from fastapi_mcp_neo.mcp.tools import register_simple_tools
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class FastAPIMCP:
         self,
         app: FastAPI,
         *,
-        name: str = "fastapi-gql-mcp API",
+        name: str = "fastapi-mcp-neo API",
         instructions: str | None = None,
         include: Sequence[str] | None = None,
         exclude: Sequence[str] | None = None,
@@ -202,7 +202,7 @@ class FastAPIMCP:
 
         mcp = FastMCP(name, auth=auth, instructions=instructions)
         if self._resolved_mode == "progressive":
-            from fastapi_gql_mcp.mcp.progressive_tools import register_progressive_tools
+            from fastapi_mcp_neo.mcp.progressive_tools import register_progressive_tools
 
             register_progressive_tools(
                 mcp, self._handler, self._domains, allow_mutation=allow_mutation
@@ -252,7 +252,7 @@ class FastAPIMCP:
         """Mount the MCP server into a FastAPI app (streamable HTTP).
 
         The endpoint is served at ``{path}/`` — e.g. ``/mcp/`` by default.
-        Mounting into the SAME app that fastapi-gql-mcp wraps disables the invoker's
+        Mounting into the SAME app that fastapi-mcp-neo wraps disables the invoker's
         lifespan management (the app's own uvicorn lifespan drives it once).
         Mounting into a different app leaves it managed, but that app will not
         run the wrapped app's startup hooks — prefer mounting into the same app.
@@ -281,7 +281,7 @@ class FastAPIMCP:
                 self._handler.invoker.disable_lifespan_management()
             else:
                 logger.warning(
-                    "Mounting fastapi-gql-mcp into a different app than the one it wraps: "
+                    "Mounting fastapi-mcp-neo into a different app than the one it wraps: "
                     "the wrapped app's lifespan events will not fire unless "
                     "something else runs them."
                 )
@@ -314,7 +314,7 @@ class FastAPIMCP:
             self._handler.invoker.disable_lifespan_management()
         else:
             logger.warning(
-                "Mounting fastapi-gql-mcp into a different app than the one it wraps: "
+                "Mounting fastapi-mcp-neo into a different app than the one it wraps: "
                 "the wrapped app's lifespan events will not fire unless "
                 "something else runs them."
             )

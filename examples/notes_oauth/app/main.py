@@ -1,4 +1,4 @@
-"""App assembly: OAuth auth + protected notes + fastapi-gql-mcp mounts.
+"""App assembly: OAuth auth + protected notes + fastapi-mcp-neo mounts.
 
 The library call is the last block — the rest is a plain FastAPI app:
 
@@ -25,12 +25,12 @@ from fastapi import FastAPI
 from app import credentials, mcp_oauth
 from app.auth_routes import router as auth_router
 from app.notes_routes import router as notes_router
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="fastapi-gql-mcp demo",
+        title="fastapi-mcp-neo demo",
         version="0.1.0",
         description="Notes API behind GitHub OAuth, exposed to agents via GraphQL + MCP.",
     )

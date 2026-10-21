@@ -23,8 +23,8 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
-from fastapi_gql_mcp import RouterGraphQLHandler
-from fastapi_gql_mcp.scanner import RouterScanner
+from fastapi_mcp_neo import RouterGraphQLHandler
+from fastapi_mcp_neo.scanner import RouterScanner
 from tests.support.models import Ok
 
 T = TypeVar("T")
@@ -71,7 +71,7 @@ class TestGenericPagination:
         return app
 
     def test_clean_type_names_no_sanitizer_warning(self, caplog):
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.type_builder"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.type_builder"):
             sdl = RouterGraphQLHandler(self._app()).get_sdl()
         assert "type Page_Item {" in sdl
         assert "type Page_User {" in sdl
@@ -186,7 +186,7 @@ class TestMultiVerbRoute:
         async def dual() -> Ok:
             return Ok(ok=True)
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             routes, skips = RouterScanner(app).scan()
         assert len(routes) == 1
         assert routes[0].method == "GET"

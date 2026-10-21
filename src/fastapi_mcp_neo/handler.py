@@ -24,23 +24,23 @@ from graphql import (
 from graphql.validation import specified_rules, validate
 from opentelemetry import trace
 
-from fastapi_gql_mcp.depth_guard import parse_guarded
-from fastapi_gql_mcp.invoker import InvocationContext, RouteInvoker
-from fastapi_gql_mcp.recursive_expand import (
+from fastapi_mcp_neo.depth_guard import parse_guarded
+from fastapi_mcp_neo.invoker import InvocationContext, RouteInvoker
+from fastapi_mcp_neo.recursive_expand import (
     expand_recursive_chains,
     recursive_edges,
     unroll_exceeded,
     unroll_limit,
 )
-from fastapi_gql_mcp.scanner import (
+from fastapi_mcp_neo.scanner import (
     ReadinessReport,
     RouteInfo,
     RouterScanner,
     SkipRecord,
     build_readiness_report,
 )
-from fastapi_gql_mcp.schema_builder import GQLMCPConfigError, SchemaBuilder
-from fastapi_gql_mcp.type_builder import TypeBuilder
+from fastapi_mcp_neo.schema_builder import GQLMCPConfigError, SchemaBuilder
+from fastapi_mcp_neo.type_builder import TypeBuilder
 
 
 class RouterGraphQLHandler:
@@ -201,7 +201,7 @@ class RouterGraphQLHandler:
         # wraps the GraphQL orchestration between them (and the invoker
         # injects its trace context FROM here, so route spans nest under
         # it). No-op without an SDK installed.
-        with trace.get_tracer("fastapi_gql_mcp").start_as_current_span(
+        with trace.get_tracer("fastapi_mcp_neo").start_as_current_span(
             "graphql.execute"
         ) as span:
             span.set_attribute(
@@ -321,10 +321,10 @@ class RouterGraphQLHandler:
     ) -> None:
         """Serve a GraphiQL playground + GraphQL HTTP endpoint on a FastAPI app.
 
-        Mounting into the SAME app that fastapi-gql-mcp wraps disables the invoker's
+        Mounting into the SAME app that fastapi-mcp-neo wraps disables the invoker's
         lifespan management (the app's own server lifespan drives it once).
         """
-        from fastapi_gql_mcp.http_api import create_graphql_router
+        from fastapi_mcp_neo.http_api import create_graphql_router
 
         if app is self._invoker.app:
             self._invoker.disable_lifespan_management()

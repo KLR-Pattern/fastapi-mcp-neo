@@ -1,6 +1,6 @@
 {
   "versions": {
-    "fastapi-gql-mcp": "0.11.1",
+    "fastapi-mcp-neo": "0.11.1",
     "fastmcp": "4.1.0",
     "mcp": "2.3.0",
     "graphql-core": "3.3.0",

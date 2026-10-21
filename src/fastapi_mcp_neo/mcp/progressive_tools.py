@@ -30,20 +30,20 @@ from graphql import (
     print_schema,
 )
 
-from fastapi_gql_mcp.domains import DomainRegistry
-from fastapi_gql_mcp.mcp.errors import (
+from fastapi_mcp_neo.domains import DomainRegistry
+from fastapi_mcp_neo.mcp.errors import (
     GQLMCPErrors,
     create_error_response,
     create_success_response,
 )
-from fastapi_gql_mcp.mcp.tools import READ_ONLY, register_executor_tools
-from fastapi_gql_mcp.recursive_expand import unwrap
-from fastapi_gql_mcp.search import FieldDoc, FieldSearchIndex
+from fastapi_mcp_neo.mcp.tools import READ_ONLY, register_executor_tools
+from fastapi_mcp_neo.recursive_expand import unwrap
+from fastapi_mcp_neo.search import FieldDoc, FieldSearchIndex
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-    from fastapi_gql_mcp.handler import RouterGraphQLHandler
+    from fastapi_mcp_neo.handler import RouterGraphQLHandler
 
 
 def _parse_domain(domain: str) -> tuple[str, ...]:
@@ -91,7 +91,7 @@ def _domain_sdl(
     (``Query { shop { catalog { ... } } }``) while graphql-core auto-collects
     only the reachable types.
     """
-    from fastapi_gql_mcp.schema_builder import group_type_name
+    from fastapi_mcp_neo.schema_builder import group_type_name
 
     queries, mutations = registry.subtree_fields(path)
     if not queries and not mutations:

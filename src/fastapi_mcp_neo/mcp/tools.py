@@ -12,8 +12,8 @@ from graphql import parse
 from graphql.language import OperationDefinitionNode, OperationType
 from mcp.types import ToolAnnotations
 
-from fastapi_gql_mcp.invoker import filter_passthrough_headers
-from fastapi_gql_mcp.mcp.errors import (
+from fastapi_mcp_neo.invoker import filter_passthrough_headers
+from fastapi_mcp_neo.mcp.errors import (
     GQLMCPErrors,
     create_error_response,
     create_success_response,
@@ -22,7 +22,7 @@ from fastapi_gql_mcp.mcp.errors import (
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-    from fastapi_gql_mcp.handler import RouterGraphQLHandler
+    from fastapi_mcp_neo.handler import RouterGraphQLHandler
 
 _HINT_AFTER_SCHEMA = (
     "Write a GraphQL query against this schema and run it with graphql_query."

@@ -15,7 +15,7 @@ from fastapi import FastAPI, Query
 from pydantic import AliasChoices, BaseModel, Field
 from typing_extensions import TypedDict
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 from tests.support.apps import add_ping
 
 

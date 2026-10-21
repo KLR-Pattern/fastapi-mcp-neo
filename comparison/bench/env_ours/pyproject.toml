@@ -1,14 +1,14 @@
 [project]
 name = "bench-env-ours"
 version = "0.0.0"
-description = "fastapi-gql-mcp side of the comparison benchmark"
+description = "fastapi-mcp-neo side of the comparison benchmark"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
     "asgi-lifespan>=2.1",
-    "fastapi-gql-mcp[mcp]>=0.3",
+    "fastapi-mcp-neo[mcp]>=0.3",
 ]
 
 [tool.uv.sources]
-fastapi-gql-mcp = { path = "../../..", editable = true }
+fastapi-mcp-neo = { path = "../../..", editable = true }

@@ -1,4 +1,4 @@
-"""Regression suite for issue #3: type-mapping gaps (fastapi-gql-mcp#3).
+"""Regression suite for issue #3: type-mapping gaps (fastapi-mcp-neo#3).
 
 Tiered by necessity — each tier is the acceptance net for one fix batch.
 Every test asserts the TARGET (post-fix) behavior, so the whole file is
@@ -26,8 +26,8 @@ from graphql import GraphQLInputObjectType, GraphQLObjectType
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
-from fastapi_gql_mcp.type_builder import (
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.type_builder import (
     TypeBuilder,
     UnsupportedFieldTypeError,
     describe_literal_values,

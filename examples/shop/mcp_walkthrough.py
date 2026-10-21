@@ -17,7 +17,7 @@ from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 from examples.shop.app import DEMO_TOKEN, create_app
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 
 
 def show(title: str, payload: object) -> None:
@@ -30,7 +30,7 @@ async def main() -> None:
     app = create_app()
     mcp = FastAPIMCP(
         app,
-        name="fastapi-gql-mcp demo",
+        name="fastapi-mcp-neo demo",
         allow_mutation=True,
         # 13 routes < threshold, so force progressive to show the 4 layers;
         # "auto" would pick simple mode (get_schema + graphql_query).

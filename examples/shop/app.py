@@ -1,4 +1,4 @@
-"""The fastapi-gql-mcp demo app: a small shop with users, catalog, orders and stats.
+"""The fastapi-mcp-neo demo app: a small shop with users, catalog, orders and stats.
 
 Feature coverage on purpose:
 
@@ -210,7 +210,7 @@ def create_app() -> FastAPI:
         yield
         print("[demo] shutdown")
 
-    app = FastAPI(title="fastapi-gql-mcp demo", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="fastapi-mcp-neo demo", version="0.3.0", lifespan=lifespan)
     app.state.users = {
         1: {"id": 1, "name": "alice", "email": "alice@shop.io", "role": "admin"},
         2: {"id": 2, "name": "bob", "email": "bob@shop.io", "role": "member"},

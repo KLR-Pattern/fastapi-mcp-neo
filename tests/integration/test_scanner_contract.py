@@ -8,8 +8,8 @@ from typing import Annotated
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
-from fastapi_gql_mcp import RouterGraphQLHandler
-from fastapi_gql_mcp.scanner import RouterScanner
+from fastapi_mcp_neo import RouterGraphQLHandler
+from fastapi_mcp_neo.scanner import RouterScanner
 from tests.support.apps import scanner_app
 from tests.support.models import ItemOut
 

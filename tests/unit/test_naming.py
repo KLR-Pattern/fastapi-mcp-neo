@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from fastapi_gql_mcp.naming import field_name_for
+from fastapi_mcp_neo.naming import field_name_for
 
 
 class Out(BaseModel):

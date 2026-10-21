@@ -30,7 +30,7 @@ changes you are shipping.
 
    ```bash
    grep '^version' pyproject.toml
-   uv run python -c "import fastapi_gql_mcp; print(fastapi_gql_mcp.__version__)"
+   uv run python -c "import fastapi_mcp_neo; print(fastapi_mcp_neo.__version__)"
    # both must print the same X.Y.Z
    ```
 
@@ -53,9 +53,9 @@ changes you are shipping.
 6. **Verify before announcing**:
 
    ```bash
-   curl -s https://pypi.org/pypi/fastapi-gql-mcp/json | python3 -c \
+   curl -s https://pypi.org/pypi/fastapi-mcp-neo/json | python3 -c \
      "import sys,json; print(json.load(sys.stdin)['info']['version'])"
-   pip download fastapi-gql-mcp==X.Y.Z --no-deps -d /tmp/check && rm -rf /tmp/check
+   pip download fastapi-mcp-neo==X.Y.Z --no-deps -d /tmp/check && rm -rf /tmp/check
    ```
 
    Stronger check (used for 0.4.0): run the example off the published wheel —
@@ -63,10 +63,10 @@ changes you are shipping.
 
    ```bash
    OTEL_OTLP_ENDPOINT=http://localhost:4317 uv run --no-project \
-     --with 'fastapi-gql-mcp[mcp]==X.Y.Z' \
+     --with 'fastapi-mcp-neo[mcp]==X.Y.Z' \
      --with fastapi --with uvicorn --with python-dotenv --with asgi-lifespan \
      --with opentelemetry-sdk --with opentelemetry-exporter-otlp \
-     python -c "import fastapi_gql_mcp; assert 'site-packages' in fastapi_gql_mcp.__file__; from app.__main__ import main; main()"
+     python -c "import fastapi_mcp_neo; assert 'site-packages' in fastapi_mcp_neo.__file__; from app.__main__ import main; main()"
    ```
 
 7. **After release**: new work goes under a fresh `## Unreleased` heading in

@@ -5,7 +5,7 @@
 Please report security vulnerabilities privately:
 
 - Email: allmonday@126.com
-- Subject prefix: `[security] fastapi-gql-mcp`
+- Subject prefix: `[security] fastapi-mcp-neo`
 
 Do **not** open a public GitHub issue for security matters.
 
@@ -15,7 +15,7 @@ configuration.
 
 ## Scope
 
-- The `fastapi_gql_mcp` Python package published on PyPI
+- The `fastapi_mcp_neo` Python package published on PyPI
 - The MCP server it exposes (transport, auth proxy, credential forwarding)
 - Out of scope: vulnerabilities in your own FastAPI app's routes — the
   bridge executes them in-process with the caller's credentials and does

@@ -15,7 +15,7 @@ import pytest
 from fastapi import FastAPI, Header, HTTPException
 from graphql import GraphQLError
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 from tests.support.apps import WHOAMI_QUERY, auth_app
 from tests.support.models import NoteOut, WhoOut
 

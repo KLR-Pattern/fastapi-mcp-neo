@@ -8,8 +8,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from fastapi_gql_mcp.graphiql import GRAPHIQL_HTML
-from fastapi_gql_mcp.invoker import filter_passthrough_headers
+from fastapi_mcp_neo.graphiql import GRAPHIQL_HTML
+from fastapi_mcp_neo.invoker import filter_passthrough_headers
 
 logger = logging.getLogger(__name__)
 

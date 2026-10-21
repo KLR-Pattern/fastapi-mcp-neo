@@ -70,8 +70,8 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from typing_extensions import is_typeddict
 
-from fastapi_gql_mcp.recursive_expand import is_direct_self_reference
-from fastapi_gql_mcp.scalars import SCALAR_MAP, GraphQLJSON, json_passthrough
+from fastapi_mcp_neo.recursive_expand import is_direct_self_reference
+from fastapi_mcp_neo.scalars import SCALAR_MAP, GraphQLJSON, json_passthrough
 
 logger = logging.getLogger(__name__)
 

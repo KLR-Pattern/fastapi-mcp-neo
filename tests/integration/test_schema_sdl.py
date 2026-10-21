@@ -11,7 +11,7 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel, Field
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 from tests.support.apps import items_app
 from tests.support.models import Err, ItemOut
 

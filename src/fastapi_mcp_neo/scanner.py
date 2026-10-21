@@ -26,9 +26,9 @@ from fastapi.utils import DefaultPlaceholder  # type: ignore[attr-defined]
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from fastapi_gql_mcp.domains import domains_for
-from fastapi_gql_mcp.naming import field_name_for
-from fastapi_gql_mcp.type_builder import (
+from fastapi_mcp_neo.domains import domains_for
+from fastapi_mcp_neo.naming import field_name_for
+from fastapi_mcp_neo.type_builder import (
     TypeBuilder,
     UnsupportedFieldTypeError,
     request_wire_name,
@@ -725,7 +725,7 @@ class RouterScanner:
 
         if skips:
             rendered = "; ".join(f"{s.method} {s.path}: {s.reason}" for s in skips)
-            logger.warning("fastapi-gql-mcp skipped %d route(s): %s", len(skips), rendered)
+            logger.warning("fastapi-mcp-neo skipped %d route(s): %s", len(skips), rendered)
 
         # Degraded-but-present routes deserve a startup notice too: the field
         # is callable but has NO field selection. Naming the cause (and the
@@ -736,7 +736,7 @@ class RouterScanner:
         if degraded:
             rendered = "; ".join(f"{r.method} {r.path}: {reason}" for r, reason in degraded)
             logger.warning(
-                "fastapi-gql-mcp bridged %d route(s) as raw JSON (no field "
+                "fastapi-mcp-neo bridged %d route(s) as raw JSON (no field "
                 "selection): %s",
                 len(degraded),
                 rendered,
@@ -746,7 +746,7 @@ class RouterScanner:
                 f"{path} ({reason})" for path, reason in types.degraded_fields
             )
             logger.warning(
-                "fastapi-gql-mcp bridged %d model field(s) as raw JSON — "
+                "fastapi-mcp-neo bridged %d model field(s) as raw JSON — "
                 "restructure the union away or give the field a JSON-"
                 "compatible annotation to regain field selection: %s",
                 len(types.degraded_fields),

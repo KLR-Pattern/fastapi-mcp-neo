@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi_gql_mcp.search import FieldDoc, FieldSearchIndex
+from fastapi_mcp_neo.search import FieldDoc, FieldSearchIndex
 
 
 def docs() -> list[FieldDoc]:
@@ -34,17 +34,17 @@ def docs() -> list[FieldDoc]:
 
 class TestTokenize:
     def test_splits_snake_case(self):
-        from fastapi_gql_mcp.search import _tokenize
+        from fastapi_mcp_neo.search import _tokenize
 
         assert _tokenize("get_invoice late") == ["get", "invoice", "late"]
 
     def test_casefold_and_nfkc(self):
-        from fastapi_gql_mcp.search import _tokenize
+        from fastapi_mcp_neo.search import _tokenize
 
         assert _tokenize("Invoice ＡＢＣ") == ["invoice", "abc"]
 
     def test_drops_single_chars_and_punctuation(self):
-        from fastapi_gql_mcp.search import _tokenize
+        from fastapi_mcp_neo.search import _tokenize
 
         # single chars and punctuation dropped; d_e -> one snake-split handled by caller
         assert _tokenize("a-b (c) d_e") == []

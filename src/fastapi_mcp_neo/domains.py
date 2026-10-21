@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from fastapi_gql_mcp.scanner import RouteInfo
+    from fastapi_mcp_neo.scanner import RouteInfo
 
 _GENERAL: tuple[str, ...] = ("general",)
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")

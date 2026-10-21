@@ -18,7 +18,7 @@ def main() -> None:
     port = int(host.split(":")[1]) if ":" in host else 8020
     otel_service = install_otel()
     print(
-        "\n  fastapi-gql-mcp demo\n"
+        "\n  fastapi-mcp-neo demo\n"
         "  ─────────────────────────────────────────────────────\n"
         f"  Home / login:           http://localhost:{port}/auth/\n"
         f"  REST docs:              http://localhost:{port}/docs\n"

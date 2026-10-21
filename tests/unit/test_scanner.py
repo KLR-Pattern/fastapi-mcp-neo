@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, FastAPI, Form, Query, WebSocket
 from pydantic import BaseModel, Field
 
-from fastapi_gql_mcp.scanner import RouterScanner, SkipRecord
+from fastapi_mcp_neo.scanner import RouterScanner, SkipRecord
 from tests.support.apps import scanner_app
 from tests.support.models import Err, ItemCreate, ItemOut
 
@@ -360,7 +360,7 @@ class TestJsonFallbackNotices:
         async def risky(ok: bool = True) -> ItemOut | Err:
             return ItemOut(id=1, name="n")
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             routes, _ = scan(app)
         assert len(routes) == 1  # degraded, not skipped
         rendered = caplog.text
@@ -378,7 +378,7 @@ class TestJsonFallbackNotices:
         async def wrapped() -> Wrapped:
             return Wrapped(result=ItemOut(id=1, name="w"))
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             scan(app)
         assert "bridged 1 model field(s) as raw JSON" in caplog.text
         assert "restructure the union away" in caplog.text
@@ -392,7 +392,7 @@ class TestJsonFallbackNotices:
         async def sparse() -> ItemOut:
             return ItemOut(id=1, name="s")
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             scan(app)
         assert "response filtered via response_model_exclude_unset" in caplog.text
 
@@ -403,7 +403,7 @@ class TestJsonFallbackNotices:
         async def clean() -> ItemOut:
             return ItemOut(id=1, name="c")
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             scan(app)
         assert "raw JSON" not in caplog.text
 
@@ -576,7 +576,7 @@ class TestReadiness:
     def test_startup_notice_texts_match_report_reasons(self, caplog):
         """The notice and the report share one classifier: every report
         reason appears verbatim in the startup warning."""
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.scanner"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.scanner"):
             report = RouterScanner(build_degraded_app()).readiness()
         rendered = next(
             r.getMessage()

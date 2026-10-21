@@ -1,6 +1,6 @@
-# fastapi-gql-mcp vs FastMCP.from_openapi
+# fastapi-mcp-neo vs FastMCP.from_openapi
 
-> **fastapi-gql-mcp 0.11.1** (this repo: FastAPI → GraphQL → MCP) vs
+> **fastapi-mcp-neo 0.11.1** (this repo: FastAPI → GraphQL → MCP) vs
 > **`FastMCP.from_openapi`** ([fastmcp 4](https://gofastmcp.com/servers/openapi),
 > the mainstream way to expose an existing OpenAPI API as MCP tools today).
 >
@@ -13,7 +13,7 @@
 
 Both consume an existing FastAPI app with zero decorators.
 **`from_openapi` turns each operation into a tool** — one call per endpoint,
-whole payloads, generic (any OpenAPI spec, any framework). **fastapi-gql-mcp
+whole payloads, generic (any OpenAPI spec, any framework). **fastapi-mcp-neo
 turns the whole API into one typed query graph** — the schema is the
 contract, which gives a smaller catalog at every size, composed queries in
 one round trip, and field projection. `from_openapi` is the right generic
@@ -34,7 +34,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  subgraph ours ["fastapi-gql-mcp: schema = contract"]
+  subgraph ours ["fastapi-mcp-neo: schema = contract"]
     A2[FastAPI app] -->|"tag tree + function names"| G[GraphQL schema SDL]
     G --> T2["2-6 constant tools: get_schema / graphql_query / graphql_mutation / progressive"]
     T2 -->|one composed query| Q["{ a… b… c… }"]
@@ -44,7 +44,7 @@ flowchart LR
 ```
 
 Both carry your docs: `from_openapi` puts endpoint docstrings and parameter
-descriptions into each tool's description and input schema; fastapi-gql-mcp
+descriptions into each tool's description and input schema; fastapi-mcp-neo
 puts the same docstrings, `Field(description)` and `Query()` descriptions
 into the SDL the agent reads via `get_schema`.
 
@@ -82,7 +82,7 @@ Token estimate = JSON bytes ÷ 4.
 
 ### Round trips and response size
 
-| Task (median of 3 runs) | from_openapi | fastapi-gql-mcp |
+| Task (median of 3 runs) | from_openapi | fastapi-mcp-neo |
 |---|---|---|
 | "filtered notes + stats" | **2 tool calls = 2 agent turns**, 2.35 ms | **1 `graphql_query`**, 1.69 ms |
 | same list (20 notes) | 2,285 B, whole payload | 2,341 B full / **610 B with field projection** |
@@ -113,7 +113,7 @@ Error calling tool 'get_note_api_notes': HTTP error 404: Not Found - {'detail': 
   the failure reason and the result share one text line.
 ```
 
-**fastapi-gql-mcp — the bad field is isolated:**
+**fastapi-mcp-neo — the bad field is isolated:**
 
 ```json
 {
@@ -131,7 +131,7 @@ Error calling tool 'get_note_api_notes': HTTP error 404: Not Found - {'detail': 
 
 ## Qualitative differences
 
-| Dimension | from_openapi | fastapi-gql-mcp |
+| Dimension | from_openapi | fastapi-mcp-neo |
 |---|---|---|
 | Tool model | one tool per operation (N tools) | 2–6 constant tools, schema is the contract |
 | Works on | any OpenAPI spec, any framework, any language | FastAPI apps only (in-process) |
@@ -175,7 +175,7 @@ What this means for the comparison, honestly:
 - **`from_openapi`**: the service is not FastAPI (other language, remote,
   spec-only), or it is small and stable, agents only, no composition
   needs, and you want the generic bridge with zero new concepts.
-- **fastapi-gql-mcp**: it is a FastAPI app that will grow; context budget
+- **fastapi-mcp-neo**: it is a FastAPI app that will grow; context budget
   is tight; agents need composed views in one round trip; you need field
   projection, write gating — or humans want GraphQL too.
 

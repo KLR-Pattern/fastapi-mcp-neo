@@ -1,7 +1,7 @@
-# fastapi-gql-mcp
+# fastapi-mcp-neo
 
-[![pypi](https://img.shields.io/pypi/v/fastapi-gql-mcp.svg)](https://pypi.python.org/pypi/fastapi-gql-mcp)
-[![PyPI Downloads](https://static.pepy.tech/badge/fastapi-gql-mcp/month)](https://pepy.tech/projects/fastapi-gql-mcp)
+[![pypi](https://img.shields.io/pypi/v/fastapi-mcp-neo.svg)](https://pypi.python.org/pypi/fastapi-mcp-neo)
+[![PyPI Downloads](https://static.pepy.tech/badge/fastapi-mcp-neo/month)](https://pepy.tech/projects/fastapi-mcp-neo)
 
 The **agent access layer for FastAPI** — agents call one `graphql_query`
 tool with full composition and per-caller credentials, instead of one tool
@@ -10,7 +10,7 @@ app: zero decorators, zero model changes.
 
 ```python
 from fastapi import FastAPI
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 
 app = FastAPI()
 
@@ -30,14 +30,14 @@ mcp.run()  # HTTP MCP server with get_schema + graphql_query tools
 Requires Python >= 3.10.
 
 ```bash
-uv add fastapi-gql-mcp            # core: GraphQL handler
-uv add 'fastapi-gql-mcp[mcp]'     # + MCP server (fastmcp)
+uv add fastapi-mcp-neo            # core: GraphQL handler
+uv add 'fastapi-mcp-neo[mcp]'     # + MCP server (fastmcp)
 ```
 
 ## Why
 
 Existing FastAPI→MCP bridges map **one tool per endpoint**: dozens of tools, no
-composition, whole-payload responses. fastapi-gql-mcp instead derives a **GraphQL
+composition, whole-payload responses. fastapi-mcp-neo instead derives a **GraphQL
 schema** from your routes (Apollo's "GraphQL as the MCP contract" pattern), so
 agents get:
 
@@ -79,7 +79,7 @@ OpenAPI spec — but agent turns dominate, and composition collapses turns.
 | Project | Tool count | Field selection | Composition | Setup |
 |---|---|---|---|---|
 | [FastMCP.from_openapi](https://gofastmcp.com/servers/openapi) | one per endpoint | ✗ | ✗ | none |
-| **fastapi-gql-mcp** | 2-6, constant | ✓ | ✓ | none |
+| **fastapi-mcp-neo** | 2-6, constant | ✓ | ✓ | none |
 
 Full head-to-head — context-growth curves, latency, auth models, selection
 guidance, all measured on one shared app: **[comparison/](./comparison/)**.
@@ -92,7 +92,7 @@ driven from two venvs on identical stacks (fastmcp 4.1.0, fastapi 0.143.0,
 same in-memory client; their tool calls ride an in-process ASGI httpx
 client, ours invoke routes in-process):
 
-| Measurement | FastMCP.from_openapi | fastapi-gql-mcp |
+| Measurement | FastMCP.from_openapi | fastapi-mcp-neo |
 |---|---|---|
 | tool catalog, 100 routes | ~15,400 tok (grows linearly, ~153 tok/route) | ~2,480 tok simple / **~1,510 tok progressive (constant)** |
 | composed task (notes+stats) | **2 tool calls = 2 agent turns**, 2.35 ms | **1 `graphql_query`**, 1.69 ms |
@@ -329,7 +329,7 @@ uses, and `assert report.ready` in CI to pin the exposure you expect.
 
 ```python
 # standalone: scan + classify only — no schema build, no MCP server
-from fastapi_gql_mcp import RouterScanner
+from fastapi_mcp_neo import RouterScanner
 
 report = RouterScanner(app, include_tags=["iam:*"]).readiness()
 report.ready            # False when anything is skipped or degraded
@@ -494,7 +494,7 @@ billing.mount_to(app, "/mcp-billing")
 ### Plain GraphQL (no MCP)
 
 ```python
-from fastapi_gql_mcp import RouterGraphQLHandler
+from fastapi_mcp_neo import RouterGraphQLHandler
 
 handler = RouterGraphQLHandler(app)
 print(handler.get_sdl())

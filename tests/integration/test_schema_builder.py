@@ -7,9 +7,9 @@ semantics without assembling a whole FastAPI app for one code path.
 
 import pytest
 
-from fastapi_gql_mcp.scanner import ParamInfo, RouteInfo
-from fastapi_gql_mcp.schema_builder import DuplicateArgError, _arguments
-from fastapi_gql_mcp.type_builder import TypeBuilder
+from fastapi_mcp_neo.scanner import ParamInfo, RouteInfo
+from fastapi_mcp_neo.schema_builder import DuplicateArgError, _arguments
+from fastapi_mcp_neo.type_builder import TypeBuilder
 
 
 class TestPrivateArgumentsContract:

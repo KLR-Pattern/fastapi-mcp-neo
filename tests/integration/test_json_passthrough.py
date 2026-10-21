@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from fastapi_gql_mcp import RouterGraphQLHandler
+from fastapi_mcp_neo import RouterGraphQLHandler
 
 
 class WithMeta(BaseModel):

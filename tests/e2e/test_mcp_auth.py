@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
 
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 from tests.support.apps import users_app
 from tests.support.mcp import http_client, jsonrpc_initialize
 

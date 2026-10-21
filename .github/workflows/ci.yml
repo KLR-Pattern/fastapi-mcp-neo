@@ -3,7 +3,7 @@ name: Test
 on:
   pull_request:
     paths:
-      - 'src/fastapi_gql_mcp/**'
+      - 'src/fastapi_mcp_neo/**'
       - 'tests/**'
       - 'examples/**'
       - 'pyproject.toml'
@@ -11,7 +11,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'src/fastapi_gql_mcp/**'
+      - 'src/fastapi_mcp_neo/**'
       - 'tests/**'
       - 'examples/**'
       - 'pyproject.toml'
@@ -52,7 +52,7 @@ jobs:
 
       - name: Test with pytest (coverage gate 95%)
         run: |
-          uv run pytest tests/ -v --cov=fastapi_gql_mcp \
+          uv run pytest tests/ -v --cov=fastapi_mcp_neo \
             --cov-report=term-missing --cov-fail-under=95
 
   # Guards the demo (and examples' syntax) against framework API drift. The

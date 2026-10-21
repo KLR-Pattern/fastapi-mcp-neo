@@ -1,4 +1,4 @@
-"""fastapi-gql-mcp half of the benchmark. Writes results_ours.json.
+"""fastapi-mcp-neo half of the benchmark. Writes results_ours.json.
 
 Run from bench/:  uv run --project env_ours python run_ours.py
 """
@@ -12,10 +12,9 @@ import time
 from pathlib import Path
 
 from fastmcp import Client
-
-from fastapi_gql_mcp import FastAPIMCP
-
 from shared_app import NOTES, build_app
+
+from fastapi_mcp_neo import FastAPIMCP
 
 OUT = Path(__file__).parent / "results_ours.json"
 
@@ -119,7 +118,7 @@ async def main() -> dict:
     results: dict = {
         "versions": {
             name: md.version(name)
-            for name in ("fastapi-gql-mcp", "fastmcp", "mcp", "graphql-core", "fastapi")
+            for name in ("fastapi-mcp-neo", "fastmcp", "mcp", "graphql-core", "fastapi")
         }
     }
 

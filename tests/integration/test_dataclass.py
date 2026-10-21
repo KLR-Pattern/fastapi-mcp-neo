@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
-from fastapi_gql_mcp.type_builder import UnsupportedFieldTypeError
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.type_builder import UnsupportedFieldTypeError
 
 
 class Mode(Enum):
@@ -311,7 +311,7 @@ class TestDegradedDataclassFields:
 
 class TestEmptyDataclass:
     def test_empty_dataclass_input_raises(self):
-        from fastapi_gql_mcp.type_builder import TypeBuilder
+        from fastapi_mcp_neo.type_builder import TypeBuilder
 
         @dataclass
         class Empty:

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Renamed the package: `fastapi-gql-mcp` → `fastapi-mcp-neo`**
+  (import `fastapi_mcp_neo`; class `FastAPIMCP` unchanged). Pure rename —
+  no behavior change; the full test suite, mypy, ruff and the CI demo
+  checks pass as before. New releases publish under the new PyPI name;
+  the old name keeps its download history and should point here.
+
 ## 0.12.0 (2026-10-10)
 
 ### Added
@@ -680,8 +690,8 @@ Schema shape + documentation wave (breaking).
 
 ### Changed
 
-- **Renamed from `routerql` to `fastapi-gql-mcp`** (package
-  `fastapi_gql_mcp`): the distribution name now carries both FastAPI and MCP.
+- **Renamed from `routerql` to `fastapi-mcp-neo`** (package
+  `fastapi_mcp_neo`): the distribution name now carries both FastAPI and MCP.
   Exception prefixes `RouterQL*` became `GQLMCP*`; `RouterMCP` /
   `RouterGraphQLHandler` keep their Router-based names.
 

@@ -9,8 +9,8 @@ import pytest
 from fastapi import FastAPI, Form, HTTPException
 from pydantic import BaseModel
 
-from fastapi_gql_mcp.handler import GQLMCPConfigError, RouterGraphQLHandler
-from fastapi_gql_mcp.naming import DuplicateFieldError
+from fastapi_mcp_neo.handler import GQLMCPConfigError, RouterGraphQLHandler
+from fastapi_mcp_neo.naming import DuplicateFieldError
 from tests.support.apps import items_app
 from tests.support.models import ItemCreate, ItemOut
 
@@ -292,7 +292,7 @@ class TestGroupNameCollisions:
         async def flat() -> ItemOut:
             return ItemOut(id=2, name="f")
 
-        with caplog.at_level(logging.WARNING, logger="fastapi_gql_mcp.schema_builder"):
+        with caplog.at_level(logging.WARNING, logger="fastapi_mcp_neo.schema_builder"):
             handler = make_handler(app)
         sdl = handler.get_sdl()
         assert "type ShopCatalogQuery {" in sdl

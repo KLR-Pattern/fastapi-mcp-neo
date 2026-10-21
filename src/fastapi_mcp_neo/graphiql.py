@@ -1,4 +1,4 @@
-"""GraphiQL HTML template for fastapi-gql-mcp (CDN-loaded, no build step)."""
+"""GraphiQL HTML template for fastapi-mcp-neo (CDN-loaded, no build step)."""
 
 GRAPHIQL_HTML = """
 <!DOCTYPE html>
@@ -6,7 +6,7 @@ GRAPHIQL_HTML = """
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GraphiQL - fastapi-gql-mcp</title>
+  <title>GraphiQL - fastapi-mcp-neo</title>
   <style>
     body { margin: 0; }
     #graphiql { height: 100dvh; }

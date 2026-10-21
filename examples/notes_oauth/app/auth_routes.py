@@ -145,14 +145,14 @@ async def logout() -> Response:
 
 
 HOME_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>fastapi-gql-mcp demo</title>
+<html><head><meta charset="utf-8"><title>fastapi-mcp-neo demo</title>
 <style>
  body {{ font-family: -apple-system, sans-serif; max-width: 40rem;
        margin: 4rem auto; line-height: 1.6; }}
  code {{ background: #f4f4f4; padding: 0 .3rem; border-radius: 4px; }}
  li {{ margin: .3rem 0; }}
 </style></head><body>
-<h1>fastapi-gql-mcp demo</h1>
+<h1>fastapi-mcp-neo demo</h1>
 <p>A Notes API behind GitHub OAuth, exposed to agents via GraphQL + MCP.</p>
 <ol>
  <li><a href="/auth/login">Login with GitHub</a> (needs <code>.env</code>)</li>

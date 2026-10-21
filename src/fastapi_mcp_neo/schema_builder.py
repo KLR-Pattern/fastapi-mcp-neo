@@ -30,11 +30,11 @@ from graphql import (
     Undefined,
 )
 
-from fastapi_gql_mcp.invoker import InvocationContext, RouteInvoker
-from fastapi_gql_mcp.naming import DuplicateFieldError
-from fastapi_gql_mcp.scalars import GraphQLJSON
-from fastapi_gql_mcp.scanner import OutputKind, ParamInfo, RouteInfo
-from fastapi_gql_mcp.type_builder import (
+from fastapi_mcp_neo.invoker import InvocationContext, RouteInvoker
+from fastapi_mcp_neo.naming import DuplicateFieldError
+from fastapi_mcp_neo.scalars import GraphQLJSON
+from fastapi_mcp_neo.scanner import OutputKind, ParamInfo, RouteInfo
+from fastapi_mcp_neo.type_builder import (
     TypeBuilder,
     append_note,
     describe_literal_values,
@@ -323,8 +323,8 @@ class SchemaBuilder:
 
         if not query_routes and not mutation_routes:
             raise GQLMCPConfigError(
-                "fastapi-gql-mcp found no routable endpoints: every route was skipped "
-                "(see the fastapi-gql-mcp warning log for reasons)."
+                "fastapi-mcp-neo found no routable endpoints: every route was skipped "
+                "(see the fastapi-mcp-neo warning log for reasons)."
             )
 
         query_tree = _Group()
@@ -340,13 +340,13 @@ class SchemaBuilder:
         mutation_type = self._root_type(mutation_tree, mutation=True)
         if query_type is None and mutation_type is None:  # pragma: no cover
             raise GQLMCPConfigError(
-                "fastapi-gql-mcp found no routable endpoints: every route was skipped."
+                "fastapi-mcp-neo found no routable endpoints: every route was skipped."
             )
         if query_type is None:
             # GraphQL requires a Query root; a mutation-only schema would fail
             # validation at first execution, so fail fast with guidance instead.
             raise GQLMCPConfigError(
-                "fastapi-gql-mcp cannot build a mutation-only schema: GraphQL "
+                "fastapi-mcp-neo cannot build a mutation-only schema: GraphQL "
                 "requires a Query root type. Expose at least one GET route "
                 "(or drop allow_mutation)."
             )

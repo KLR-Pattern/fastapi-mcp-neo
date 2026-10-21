@@ -28,7 +28,7 @@ import pytest
 from fastapi import Body, Cookie, FastAPI, File, Form, Header, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from fastapi_gql_mcp import RouterGraphQLHandler
+from fastapi_mcp_neo import RouterGraphQLHandler
 
 _UUID = "12345678-1234-5678-1234-567812345678"
 

@@ -2,7 +2,7 @@
 
 Branch: **`otel-smoke`** (based on master, adds `examples/otel_smoke.py`)
 
-Goal: verify fastapi-gql-mcp observability — with an OpenTelemetry SDK
+Goal: verify fastapi-mcp-neo observability — with an OpenTelemetry SDK
 installed, fastmcp's tool-level spans and FastAPI ≥0.142's route-level spans
 appear for free, and the bridge-injected W3C traceparent stitches the two
 layers (plus the `graphql.execute` orchestration span) into **one trace**.
@@ -85,13 +85,13 @@ uv run --with opentelemetry-sdk --with opentelemetry-exporter-otlp \
 ### 2.3 Verify the spans arrived (either way works)
 
 Browser: open http://localhost:16686 → Search → pick service
-`fastapi-gql-mcp-smoke` → Find Traces.
+`fastapi-mcp-neo-smoke` → Find Traces.
 
 Command line (an agent can judge directly):
 
 ```bash
-curl -s "http://localhost:16686/api/services"          # must contain fastapi-gql-mcp-smoke
-curl -s "http://localhost:16686/api/traces?service=fastapi-gql-mcp-smoke&limit=5"
+curl -s "http://localhost:16686/api/services"          # must contain fastapi-mcp-neo-smoke
+curl -s "http://localhost:16686/api/traces?service=fastapi-mcp-neo-smoke&limit=5"
 ```
 
 **Expected**: 2–3 traces. The one containing `tools/call graphql_query`
@@ -118,5 +118,5 @@ nothing to clean up.
 |---|---|
 | Script run | prints `query result: {...success: True...}` |
 | console spans | `tools/call graphql_query` and `GET /things` appear |
-| Jaeger ingestion | `/api/services` contains `fastapi-gql-mcp-smoke` |
+| Jaeger ingestion | `/api/services` contains `fastapi-mcp-neo-smoke` |
 | One tree | `tools/call > graphql.execute > GET /things` share one traceID and nest correctly |

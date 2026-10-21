@@ -7,7 +7,7 @@ from asgi_lifespan import LifespanManager
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from fastapi_gql_mcp import FastAPIMCP
+from fastapi_mcp_neo import FastAPIMCP
 from tests.support.apps import WHOAMI_QUERY, auth_app
 from tests.support.mcp import asgi_client_factory, tool_payload
 

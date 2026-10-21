@@ -8,7 +8,7 @@ the correct altitude for them.
 
 from graphql import parse
 
-from fastapi_gql_mcp.recursive_expand import unroll_exceeded
+from fastapi_mcp_neo.recursive_expand import unroll_exceeded
 
 EDGES = frozenset({"children"})
 

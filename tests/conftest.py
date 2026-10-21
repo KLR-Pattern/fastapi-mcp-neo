@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Callable
 import pytest
 from fastapi import FastAPI
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 
 
 @pytest.fixture

@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from graphql.utilities import get_introspection_query
 from pydantic import BaseModel
 
-from fastapi_gql_mcp.handler import RouterGraphQLHandler
+from fastapi_mcp_neo.handler import RouterGraphQLHandler
 
 
 class Node(BaseModel):

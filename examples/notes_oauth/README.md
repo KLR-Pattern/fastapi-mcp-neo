@@ -1,6 +1,6 @@
 # Example: notes-oauth — GitHub OAuth + Notes
 
-A consumer example for [fastapi-gql-mcp](../../README.md): a Notes API
+A consumer example for [fastapi-mcp-neo](../../README.md): a Notes API
 behind **GitHub OAuth**, exposed to agents via **GraphQL + MCP**. The point
 is the full-flow experience: you log in with GitHub, and the same identity
 lets you — or an agent acting as you — query, create and delete notes.
@@ -18,7 +18,7 @@ GitHub → Settings → Developer settings → [OAuth Apps](https://github.com/s
 
 | Field | Value |
 |---|---|
-| Application name | anything, e.g. `fastapi-gql-mcp demo` |
+| Application name | anything, e.g. `fastapi-mcp-neo demo` |
 | Homepage URL | `http://localhost:8020` |
 | Authorization callback URL | `http://localhost:8020/auth/callback` |
 

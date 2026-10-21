@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastmcp import Client
 from pydantic import BaseModel
 
-from fastapi_gql_mcp import FastAPIMCP, RouterMCP
+from fastapi_mcp_neo import FastAPIMCP, RouterMCP
 from tests.support.apps import big_app, multi_domain_app, users_app
 from tests.support.mcp import tool_payload
 

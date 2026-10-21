@@ -9,7 +9,7 @@ spreads. Handler-level enforcement lives in integration/test_depth_guard.py.
 import pytest
 from graphql import parse
 
-from fastapi_gql_mcp.depth_guard import _FragmentCycle, document_depth, parse_guarded
+from fastapi_mcp_neo.depth_guard import _FragmentCycle, document_depth, parse_guarded
 
 
 class TestDocumentDepth:

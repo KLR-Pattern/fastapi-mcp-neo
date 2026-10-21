@@ -1,5 +1,5 @@
 [project]
-name = "fastapi-gql-mcp-example-notes-oauth"
+name = "fastapi-mcp-neo-example-notes-oauth"
 version = "0.1.0"
 description = "Consumer example: GitHub OAuth login + protected notes API + MCP OAuth (Claude Code)."
 readme = "README.md"
@@ -11,7 +11,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "asgi-lifespan>=2.1",
     "python-multipart>=0.0.32",
-    "fastapi-gql-mcp[mcp]>=0.3",
+    "fastapi-mcp-neo[mcp]>=0.3",
 ]
 
 [dependency-groups]
@@ -25,7 +25,7 @@ otel = [
 # The example consumes the library from the repo root, exactly like an
 # external consumer would from PyPI — tests/test_example_public_api.py
 # guards that it never reaches into library internals.
-fastapi-gql-mcp = { path = "../..", editable = true }
+fastapi-mcp-neo = { path = "../..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -29,7 +29,7 @@ Run it (no project deps touched — everything rides on ``--with``):
     #  e.g. docker.m.daocloud.io/jaegertracing/all-in-one:latest)
     uv run --with opentelemetry-sdk --with opentelemetry-exporter-otlp \\
         python examples/otel_smoke.py --mode otlp
-    # then open http://localhost:16686 -> service "fastapi-gql-mcp-smoke"
+    # then open http://localhost:16686 -> service "fastapi-mcp-neo-smoke"
 
 Cleanup afterwards:
 
@@ -54,7 +54,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
 )
 
-SERVICE_NAME = "fastapi-gql-mcp-smoke"
+SERVICE_NAME = "fastapi-mcp-neo-smoke"
 
 
 def install_provider(mode: str, endpoint: str) -> TracerProvider:
@@ -83,7 +83,7 @@ async def run_query() -> None:
     from fastmcp import Client
     from pydantic import BaseModel
 
-    from fastapi_gql_mcp import FastAPIMCP
+    from fastapi_mcp_neo import FastAPIMCP
 
     class Out(BaseModel):
         id: int

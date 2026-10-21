@@ -10,7 +10,7 @@ name: Test
 on:
   pull_request:
     paths-ignore:
-      - 'src/fastapi_gql_mcp/**'
+      - 'src/fastapi_mcp_neo/**'
       - 'tests/**'
       - 'examples/**'
       - 'pyproject.toml'
