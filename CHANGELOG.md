@@ -1,14 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 (2026-10-22)
 
 ### Changed
 
 - **Renamed the package: `fastapi-gql-mcp` → `fastapi-mcp-neo`**
   (import `fastapi_mcp_neo`; class `FastAPIMCP` unchanged). Pure rename —
   no behavior change; the full test suite, mypy, ruff and the CI demo
-  checks pass as before. New releases publish under the new PyPI name;
-  the old name keeps its download history and should point here.
+  checks pass as before. Releases now publish under the new PyPI name;
+  the old name keeps its download history.
 
 ## 0.12.0 (2026-10-10)
 
