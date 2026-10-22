@@ -17,6 +17,7 @@ from datetime import date, datetime
 from datetime import time as dt_time
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
 from asgi_lifespan import LifespanManager
@@ -112,7 +113,14 @@ def build_request(
                 extensions={"code": "BAD_REQUEST"},
             )
         # The path template holds the raw function-arg name, not any alias.
-        path_values[param.raw_name] = rendered
+        # Starlette's convertor to_string() returns values RAW (no percent-
+        # encoding), and httpx re-parses the assembled path as a URL — a
+        # literal '?'/'#' in a value would start the query/fragment and
+        # silently truncate it. Encode here so metacharacters stay inside
+        # the segment; httpx decodes into scope["path"] and the route
+        # receives the original value (tests/integration/
+        # test_path_param_metachars.py).
+        path_values[param.raw_name] = quote(str(rendered), safe="")
 
     # Let Starlette render the URL from its own route definition: it owns the
     # template syntax (path convertors like {id:int} / {p:path}) and the

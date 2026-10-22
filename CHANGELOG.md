@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.0 (2026-10-22)
+
+### Fixed
+
+- **Path parameter values containing URL metacharacters round-trip
+  intact.** Starlette's convertor `to_string()` returns values
+  un-encoded, so httpx re-parsed a literal `?`/`#` inside a path
+  argument as the query/fragment separator and silently truncated it
+  (`x?q=1` arrived as `x`). Values are now percent-encoded before URL
+  assembly; the route receives the original value. Analyzed against
+  tadata-org/fastapi_mcp#354: the wrong-endpoint/traversal half of that
+  bug never applied here (in-process dispatch does not normalize `..`,
+  routing matches the literal path) — this was the data-loss half.
+  Pinned by `tests/integration/test_path_param_metachars.py`.
+
 ## 0.13.0 (2026-10-22)
 
 ### Changed
