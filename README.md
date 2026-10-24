@@ -396,13 +396,33 @@ graphql_query:                                    get_stats()          (parallel
             get_stats { total } } }
 ```
 
-Pick by shape, not capability: `graphql` for small-to-medium apps,
-`progressive` for large ones (it warns you above `progressive_threshold`,
-default 25), `tools` for per-tool client permissions, weaker models, or
-[fastapi_mcp migrants](#migrating-from-fastapi_mcp) (`tools` warns above
-50 routes — the linear catalog overtakes the constant modes there).
-Nothing switches implicitly. `"simple"` is a deprecated alias for
-`graphql`.
+**Pick by how you control access** — that is the real axis:
+
+- **`tools` — control by operation.** The client approves and gates each
+  tool individually: hand a third-party agent a curated subset
+  (`include`/`exclude`), allow `get_note` while blocking `delete_note`
+  at the approval layer. Also the fit for weaker models (no GraphQL to
+  write) and [fastapi_mcp migrants](#migrating-from-fastapi_mcp).
+- **`graphql` — control by kind, and you trust the agent.** One boundary
+  between reads and writes: `graphql_query` auto-runs (`readOnlyHint`),
+  `graphql_mutation` asks for confirmation (`destructiveHint`);
+  `allow_mutation=False` gives analysts a pure read-only deployment and
+  `mutation_include` narrows which writes exist at all. Best for
+  composition-heavy internal work — one round trip across many routes.
+- **`progressive` — `graphql`'s contract for apps too big to hand over
+  in one shot.** The agent learns one domain at a time
+  (`list_domains` → fragments); the catalog stays ~1.5k tokens whether
+  the API has 30 routes or 300.
+
+Typical pairings: an internal agent gets `graphql` (read/write split by
+tool annotations), the analytics dashboard gets a read-only deployment
+(`graphql` + `allow_mutation=False`), the external partner agent gets
+`tools` on a ten-route curated subset.
+
+Nothing switches implicitly: `graphql` warns above
+`progressive_threshold` (default 25), `tools` warns above 50 routes (the
+linear catalog overtakes the constant modes there). `"simple"` is a
+deprecated alias for `graphql`.
 
 ### What the agent sees (connection lifecycle)
 
