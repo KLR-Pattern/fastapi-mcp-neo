@@ -93,7 +93,11 @@ def _full_selection(t: GraphQLType, depth: int = 0, seen: frozenset[str] = froze
         # else: object field at the depth cap (or recursive repeat) — a
         # bare object field would be an invalid document; omit it (the
         # agent can select it explicitly via `fields`)
-    return "{ " + " ".join(parts) + " }"
+    #
+    # Empty parts => "" too: an all-capped level has no valid selection,
+    # so the parent omits this object like any other capped one (a
+    # truthy "{  }" here used to embed an invalid empty selection set).
+    return "{ " + " ".join(parts) + " }" if parts else ""
 
 
 def _null_union(schema: dict[str, Any]) -> dict[str, Any]:
@@ -192,6 +196,15 @@ def _register_field_tool(
 
     wrap = "".join(f"{seg} {{" for seg in domain_path)
     close = "}" * len(domain_path)
+    # Immutable-schema-derived: compute once, close over it (review #9 —
+    # this used to re-walk the type graph on every tool call).
+    default_selection = _full_selection(field.type)
+    needs_selection = isinstance(_unwrap(field.type), GraphQLObjectType)
+    # An object type whose every field chain hits the depth cap has no
+    # valid default selection — such tools REQUIRE a `fields` argument
+    # (marked required in the input schema) instead of failing at call
+    # time with an opaque syntax error.
+    requires_fields = needs_selection and not default_selection
 
     async def run(payload: dict[str, Any], *, fields: str | None = None) -> dict[str, Any]:
         from fastmcp.exceptions import ToolError
@@ -210,7 +223,14 @@ def _register_field_tool(
             )
         decls = ", ".join(f"${a}: {_sdl_type(field.args[a].type)}" for a in variables)
         args = ", ".join(f"{a}: ${a}" for a in variables)
-        selection = (fields or "").strip() or _full_selection(field.type)
+        selection = (fields or "").strip()
+        if not selection and requires_fields:
+            raise ToolError(
+                "this route's type has no fields within the selection "
+                "depth cap — pass `fields`, e.g. `{ <nested fields> }`"
+            )
+        if not selection:
+            selection = default_selection
         op = "mutation" if is_mutation else "query"
         header = f"{op}({decls})" if decls else op
         field_call = f"{field_name}({args})" if args else field_name
@@ -302,6 +322,8 @@ def _register_field_tool(
                 schema["default"] = arg.default_value
         properties[arg_name] = schema
     input_schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if requires_fields:
+        required_names.append("fields")
     if required_names:
         input_schema["required"] = required_names
     # Override the signature-derived schema with the GraphQL-derived one.

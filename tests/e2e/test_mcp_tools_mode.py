@@ -344,3 +344,66 @@ class TestMultiSegmentTags:
         async with Client(mcp.mcp) as client:
             names = sorted(t.name for t in await client.list_tools())
         assert "get_user" in names  # users_app single-segment, unchanged
+
+
+class TestEmptySelectionCap:
+    """Regression (review #5): an all-capped selection level used to
+    yield a truthy-but-invalid "{  }" at ANY nesting depth. Now: empty
+    levels are omitted by their parent; a type with no default selection
+    at all marks `fields` required and explains itself on call."""
+
+    @pytest.fixture
+    def cap_mcp(self):
+        from pydantic import BaseModel
+
+        class Deeper(BaseModel):
+            v: int
+
+        class Deep(BaseModel):
+            dd: Deeper
+
+        class Mid(BaseModel):
+            d: Deep
+
+        class Root(BaseModel):  # has a leaf: valid one-field default
+            val: int
+            mid: Mid
+
+        class Root2(BaseModel):  # every chain hits the cap: no default
+            mid: Mid
+
+        app = FastAPI()
+
+        @app.get("/mixed", tags=["cap"])
+        async def mixed() -> Root:
+            return Root(val=1, mid=Mid(d=Deep(dd=Deeper(v=9))))
+
+        @app.get("/chain", tags=["cap"])
+        async def chain() -> Root2:
+            return Root2(mid=Mid(d=Deep(dd=Deeper(v=9))))
+
+        return FastAPIMCP(app, name="cap", mode="tools")
+
+    async def test_mid_level_all_capped_is_omitted_not_invalid(self, cap_mcp):
+        async with Client(cap_mcp.mcp) as client:
+            r = await client.call_tool("mixed", {})
+        # 'mid' silently vanished into "{  }" before; now it is simply
+        # omitted from the default selection and the call succeeds
+        assert r.structured_content == {"data": {"val": 1}}
+
+    async def test_no_default_selection_requires_fields(self, cap_mcp):
+        async with Client(cap_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        assert "fields" in tools["chain"].inputSchema["required"]
+
+    async def test_no_fields_call_gets_clear_error(self, cap_mcp):
+        async with Client(cap_mcp.mcp) as client:
+            with pytest.raises(ToolError, match="depth cap"):
+                await client.call_tool("chain", {})
+
+    async def test_explicit_fields_reaches_the_depth(self, cap_mcp):
+        async with Client(cap_mcp.mcp) as client:
+            r = await client.call_tool(
+                "chain", {"fields": "{ mid { d { dd { v } } } }"}
+            )
+        assert r.structured_content == {"data": {"mid": {"d": {"dd": {"v": 9}}}}}
