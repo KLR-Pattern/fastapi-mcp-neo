@@ -287,12 +287,12 @@ def register_route_tools(
     mcp: Any,
     handler: RouterGraphQLHandler,
     *,
-    escape_hatch: bool = False,
     allow_mutation: bool = False,
 ) -> int:
-    """Register one tool per GraphQL field; optionally keep the executor
-    tools (``graphql_query`` / ``graphql_mutation``) as the composition
-    escape hatch. Returns the number of field tools registered."""
+    """Register one tool per GraphQL field — the whole toolset of tools
+    mode. Composition is NOT offered here: this mode's granularity is the
+    tool, and clients compose via parallel tool calls; composition queries
+    belong to graphql/progressive mode. Returns the number of tools."""
     schema: GraphQLSchema = handler.schema
 
     def register_group(group_type: Any, is_mutation: bool) -> int:
@@ -312,9 +312,4 @@ def register_route_tools(
     total = register_group(schema.query_type, is_mutation=False)
     if allow_mutation and schema.mutation_type:
         total += register_group(schema.mutation_type, is_mutation=True)
-
-    if escape_hatch:
-        from fastapi_mcp_neo.mcp.tools import register_executor_tools
-
-        register_executor_tools(mcp, handler, allow_mutation=allow_mutation)
     return total

@@ -143,7 +143,6 @@ class FastAPIMCP:
         exclude_deprecated: bool = False,
         progressive_threshold: int = PROGRESSIVE_THRESHOLD,
         mutation_include: Sequence[str] | None = None,
-        escape_hatch: bool = False,
         passthrough_headers: Sequence[str] | None = None,
         auth: Any | None = None,
         request_timeout: float | None = 30.0,
@@ -195,7 +194,6 @@ class FastAPIMCP:
                 route_count,
                 TOOLS_THRESHOLD,
             )
-        self._escape_hatch = escape_hatch
         self._domains = DomainRegistry(self._handler.routes)
         self._mcp = self._build_mcp(name, allow_mutation, auth, instructions)
 
@@ -234,10 +232,7 @@ class FastAPIMCP:
             from fastapi_mcp_neo.mcp.route_tools import register_route_tools
 
             register_route_tools(
-                mcp,
-                self._handler,
-                escape_hatch=self._escape_hatch,
-                allow_mutation=allow_mutation,
+                mcp, self._handler, allow_mutation=allow_mutation
             )
         elif self._resolved_mode == "progressive":
             from fastapi_mcp_neo.mcp.progressive_tools import register_progressive_tools

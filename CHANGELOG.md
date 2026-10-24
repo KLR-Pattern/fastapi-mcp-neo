@@ -11,8 +11,9 @@
   (GET -> readOnlyHint, writes -> destructiveHint). For per-tool client
   permissions (MCP gates per tool) and fastapi_mcp migrants; warns above
   50 routes (~250 tok/route measured — use progressive or an
-  include/exclude subset there). `escape_hatch=True` re-adds
-  graphql_query/graphql_mutation for composition.
+  include/exclude subset there). No executor tools in this mode: the
+  tool is the granularity, clients compose via parallel tool calls;
+  composition queries belong to graphql/progressive mode.
 
 ### Changed (breaking)
 
