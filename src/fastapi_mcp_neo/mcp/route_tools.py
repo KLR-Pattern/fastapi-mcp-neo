@@ -167,23 +167,18 @@ def _register_field_tool(
     fn: Callable[..., Any] = ns[field_name]
 
     # Each tool presents itself as a standalone GraphQL entry: typed args
-    # ARE the operation's variables, ``fields`` IS the selection set, and
-    # the description carries the exact operation this tool executes.
-    op = "mutation" if is_mutation else "query"
-    all_decls = ", ".join(f"${a}: {_sdl_type(field.args[a].type)}" for a in arg_names)
-    all_args = ", ".join(f"{a}: ${a}" for a in arg_names)
-    example_selection = _full_selection(field.type) or "{ ... }"
-    operation = f"{op}({all_decls}) {{{domain} {{{field_name}({all_args}) {example_selection}}}}}"
+    # ARE the field's arguments, ``fields`` IS the selection set. The
+    # one-line signature suffices — a full operation document was tried
+    # and dropped: it repeated what output_schema and the typed args
+    # already say (~27% of the catalog, zero information gain).
+    sdl_args = ", ".join(f"{a}: {_sdl_type(field.args[a].type)}" for a in arg_names)
+    signature = f"{field_name}({sdl_args}): {_sdl_type(field.type)}"
     description = (field.description or "").strip()
     parts = [description] if description else []
+    parts.append(f"GraphQL: `{signature}`")
     parts.append(
-        "This tool is a standalone GraphQL entry — it executes exactly this "
-        f"operation:\n`{operation}`"
-    )
-    parts.append(
-        "Arguments map 1:1 to the operation's variables. `fields` (optional) "
-        "replaces the selection set to project the response, e.g. `{ id title }` "
-        "— omit it for the full selection above."
+        "`fields` (optional): a GraphQL selection set to project the "
+        "response, e.g. `{ id title }` — omit for the full type."
     )
     description = "\n\n".join(parts)
 
