@@ -90,13 +90,21 @@ def _full_selection(t: GraphQLType, depth: int = 0, seen: frozenset[str] = froze
     return "{ " + " ".join(parts) + " }"
 
 
+def _null_union(schema: dict[str, Any]) -> dict[str, Any]:
+    """Nullable in GraphQL = value may be JSON null — the schema must say so."""
+    return {"anyOf": [schema, {"type": "null"}]}
+
+
 def _json_schema(
     t: GraphQLType, depth: int = 0, seen: frozenset[str] = frozenset()
 ) -> dict[str, Any]:
     """GraphQL output type -> JSON Schema (the tool's output_schema)."""
-    if is_non_null_type(t) or is_list_type(t):
-        if is_list_type(t):
-            return {"type": "array", "items": _json_schema(t.of_type, depth, seen)}
+    if is_list_type(t):
+        items = _json_schema(t.of_type, depth, seen)
+        if not is_non_null_type(t.of_type):
+            items = _null_union(items)
+        return {"type": "array", "items": items}
+    if is_non_null_type(t):
         return _json_schema(t.of_type, depth, seen)
     if isinstance(t, GraphQLEnumType):
         return {"type": "string", "enum": list(t.values.keys())}
@@ -109,7 +117,10 @@ def _json_schema(
             return {"type": "object"}
         props: dict[str, Any] = {}
         for fname, f in t.fields.items():
-            props[fname] = _json_schema(f.type, depth + 1, seen | {t.name})
+            schema = _json_schema(f.type, depth + 1, seen | {t.name})
+            if not is_non_null_type(f.type):
+                schema = _null_union(schema)
+            props[fname] = schema
         # No "required" at any level: the fields projection returns subsets
         # of these shapes, and output_schema is static per tool — properties
         # describe what MAY come back, matching GraphQL selection semantics.
@@ -126,7 +137,10 @@ def _input_json_schema(
     fields carry properties and requiredness, so body parameters stay
     typed (the signature's dict is only the execution vessel)."""
     if is_list_type(t):
-        return {"type": "array", "items": _input_json_schema(t.of_type, depth, seen)}
+        items = _input_json_schema(t.of_type, depth, seen)
+        if not is_non_null_type(t.of_type):
+            items = _null_union(items)
+        return {"type": "array", "items": items}
     if is_non_null_type(t):
         return _input_json_schema(t.of_type, depth, seen)
     if isinstance(t, GraphQLEnumType):
@@ -141,12 +155,15 @@ def _input_json_schema(
         props: dict[str, Any] = {}
         required: list[str] = []
         for fname, f in t.fields.items():
-            props[fname] = _input_json_schema(f.type, depth + 1, seen | {t.name})
-            has_default = f.default_value is not None and f.default_value is not Undefined
+            schema = _input_json_schema(f.type, depth + 1, seen | {t.name})
+            has_default = f.default_value is not Undefined
             if is_non_null_type(f.type) and not has_default:
                 required.append(fname)
-            elif has_default:
-                props[fname]["default"] = f.default_value
+            else:
+                schema = _null_union(schema)
+                if has_default:
+                    schema["default"] = f.default_value
+            props[fname] = schema
         out: dict[str, Any] = {"type": "object", "properties": props}
         if required:
             out["required"] = required
@@ -176,7 +193,7 @@ def _register_field_tool(
             for a in arg_names
             if a not in variables
             and is_non_null_type(field.args[a].type)
-            and field.args[a].default_value in (None, Undefined)
+            and field.args[a].default_value is Undefined
         ]
         if missing:
             raise ToolError(
@@ -234,9 +251,12 @@ def _register_field_tool(
 
     # MCP spec: output schemas must be object types — wrap the field's type
     # in the {"data": ...} envelope every route tool returns on success.
+    data_schema = _json_schema(field.type)
+    if not is_non_null_type(field.type):
+        data_schema = _null_union(data_schema)
     output_schema = {
         "type": "object",
-        "properties": {"data": _json_schema(field.type)},
+        "properties": {"data": data_schema},
         "required": ["data"],
     }
     tool = FunctionTool.from_function(
@@ -261,7 +281,7 @@ def _register_field_tool(
     for arg_name in arg_names:
         arg = field.args[arg_name]
         properties[arg_name] = _input_json_schema(arg.type)
-        has_default = arg.default_value is not None and arg.default_value is not Undefined
+        has_default = arg.default_value is not Undefined
         if is_non_null_type(arg.type) and not has_default:
             required_names.append(arg_name)
     input_schema: dict[str, Any] = {"type": "object", "properties": properties}

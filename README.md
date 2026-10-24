@@ -365,6 +365,19 @@ mcp = FastAPIMCP(
 mcp.run()  # streamable HTTP, 127.0.0.1:8000 — mcp.run(host="0.0.0.0", port=9000)
 ```
 
+### Modes
+
+| mode | toolset | agent experience | pick when |
+|---|---|---|---|
+| `graphql` (default) | `get_schema` + `graphql_query` (+ `graphql_mutation`) | learns the SDL once, then writes GraphQL documents — composition, projection and aliases in one round trip | the default; small-to-medium apps |
+| `progressive` | 5-layer domain walkthrough | discovery in fragments, same document execution | large apps (above ~25 routes) |
+| `tools` | one tool per route | calls typed per-route tools directly — no GraphQL literacy; a `fields` argument projects each response | per-tool client permissions (MCP gates tools individually), weaker models, fastapi_mcp migrants |
+
+Nothing switches implicitly. `graphql` mode warns above `progressive_threshold`
+(default 25) suggesting progressive; `tools` mode warns above 50 routes
+(~250 tokens of catalog per route measured — prefer progressive or an
+include/exclude subset). `"simple"` is a deprecated alias for `graphql`.
+
 ### What the agent sees (connection lifecycle)
 
 When an MCP client (Claude Code, Cursor, any MCP-capable agent) connects
@@ -435,9 +448,9 @@ mcp = FastAPIMCP(
 
 ### Progressive disclosure (large apps)
 
-Above `progressive_threshold` routes (default 25, `mode="auto"`, counted
-after path and tag filtering), the toolset switches to a 5-layer walkthrough
-of the tag tree:
+With `mode="progressive"` (graphql mode warns and suggests it above
+`progressive_threshold` routes — default 25, counted after path and tag
+filtering), the toolset is a 5-layer walkthrough of the tag tree:
 
 ```
 list_domains ──▶ list_queries("billing:invoice") ──▶ get_query_schema("billing:invoice") ──▶ graphql_query
@@ -449,7 +462,7 @@ Each domain SDL fragment re-wraps the real group types along the path, so it
 shows **exactly the grouped query the agent must write** — nothing more, and
 with every description attached. **Discovery is scoped; execution is not**:
 `graphql_query` always runs against the full schema, so fields from different
-domains combine freely. Force either mode with `mode="simple" | "progressive"`.
+domains combine freely. All three modes: `mode="graphql" | "progressive" | "tools"`.
 
 ### Mounted into the same app
 
@@ -491,6 +504,34 @@ iam.mount_to(app, "/mcp-iam")        # streamable HTTP at /mcp-iam/
 billing.mount_to(app, "/mcp-billing")
 ```
 </details>
+
+### Migrating from fastapi_mcp
+
+[fastapi-mcp](https://github.com/tadata-org/fastapi_mcp) has been dormant
+since August 2025 (last release v0.4.0, 2025-07; incompatible with the
+current MCP spec). Migration here is usually two lines — the bridge
+derives everything from your existing app — and `mode="tools"` gives you
+the same one-tool-per-route shape with a typed soul:
+
+| fastapi_mcp | here |
+|---|---|
+| `FastApiMCP(app)` | `FastAPIMCP(app, mode="tools")` |
+| `include_operations=["get_note"]` | `include=["/notes/{note_id}"]` (path globs) or `include_tags=[...]` |
+| `mcp.mount()` (lifespan never fires [#256](https://github.com/tadata-org/fastapi_mcp/issues/256); requests hang [#259](https://github.com/tadata-org/fastapi_mcp/issues/259)) | `mount_to(app, "/mcp")` — lifespan chained, e2e-tested |
+| `AuthConfig` | `auth=` (TokenVerifier gate / OAuth provider) + `passthrough_headers` — each caller acts as themselves |
+| tool names from `operation_id` (`list_notes_notes_get`) | tool names from function names (`list_notes`) |
+| whole-payload responses, no output types | `fields` projection (`{ id title }`) + typed `output_schema` |
+| every tool shows as "write" (no annotations [#252](https://github.com/tadata-org/fastapi_mcp/issues/252)) | readOnlyHint / destructiveHint derived from the HTTP method |
+
+Issues from that repo that cannot happen here, by construction: cyclic
+`$ref` RecursionError ([#287](https://github.com/tadata-org/fastapi_mcp/issues/287)
+— no spec parsing), path-parameter URL encoding
+([#354](https://github.com/tadata-org/fastapi_mcp/issues/354) — in-process
+dispatch, percent-encoded assembly), OpenAPI dialect fields breaking
+strict clients ([#218](https://github.com/tadata-org/fastapi_mcp/issues/218)
+— schemas derive from GraphQL types), mcp 2.x SDK incompatibility
+([#321](https://github.com/tadata-org/fastapi_mcp/issues/321) — rides
+fastmcp 4.x on the current spec).
 
 ### Plain GraphQL (no MCP)
 
