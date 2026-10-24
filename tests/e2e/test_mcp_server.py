@@ -32,6 +32,17 @@ class TestServerBehavior:
             FastAPIMCP(users_app(), name="ro")
         assert "Consider mode=" not in caplog.text
 
+    async def test_tools_mode_warns_above_50(self, caplog):
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            mcp = FastAPIMCP(big_app(51), name="many", mode="tools")
+        assert mcp.resolved_mode == "tools"
+        assert "tools mode registers one tool per route" in caplog.text
+
+    async def test_tools_mode_no_warning_at_50(self, caplog):
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            FastAPIMCP(big_app(50), name="fit", mode="tools")
+        assert "tools mode" not in caplog.text
+
     async def test_explicit_progressive_mode_registers_layered_tools(self):
         mcp = FastAPIMCP(big_app(30), name="big", mode="progressive")
         assert mcp.resolved_mode == "progressive"

@@ -15,10 +15,13 @@ from fastapi_mcp_neo.mcp.tools import register_graphql_tools
 
 logger = logging.getLogger(__name__)
 
-# Route count above which graphql mode (one-shot SDL) gets a startup
-# warning advising progressive disclosure — advisory only, never a silent
-# mode switch: behavior must stay deterministic across environments.
+# Route counts above which graphql/tools modes get startup warnings
+# advising progressive disclosure — advisory only, never a silent mode
+# switch: behavior must stay deterministic across environments. tools
+# starts later on the curve: ~250 tok/route measured puts 50 routes at
+# the catalog size where the constant-catalog modes take over.
 PROGRESSIVE_THRESHOLD = 25
+TOOLS_THRESHOLD = 50
 
 
 def _compose_lifespan(host: FastAPI, sub_http_app: Any) -> None:
@@ -111,8 +114,9 @@ class FastAPIMCP:
             graphql_query) for larger schemas; ``tools`` registers one
             standalone-GraphQL-entry tool per route (typed args, ``fields``
             projection, method-derived annotations — per-tool client
-            permissions). ``"simple"`` is a deprecated alias for
-            ``graphql``.
+            permissions; warns above 50 routes, where the linear catalog
+            overtakes the constant-catalog modes). ``"simple"`` is a
+            deprecated alias for ``graphql``.
         include_hidden: Also scan routes with ``include_in_schema=False``.
         exclude_deprecated: Drop routes declared ``deprecated=True`` — a
             config-level silent drop, like the path/tag filters. Routes
@@ -175,6 +179,17 @@ class FastAPIMCP:
                 "with an include filter (per-tool permissions).",
                 route_count,
                 self._progressive_threshold,
+            )
+        if self._resolved_mode == "tools" and route_count > TOOLS_THRESHOLD:
+            logger.warning(
+                "Schema carries %d routes (> %d): tools mode registers one "
+                "tool per route, so the catalog grows linearly (~250 tokens "
+                "per route measured). Consider mode='progressive' (constant "
+                "per-session cost) or narrowing with include/exclude to a "
+                "curated subset — per-tool permissions work best on small, "
+                "deliberate selections.",
+                route_count,
+                TOOLS_THRESHOLD,
             )
         self._escape_hatch = escape_hatch
         self._domains = DomainRegistry(self._handler.routes)
