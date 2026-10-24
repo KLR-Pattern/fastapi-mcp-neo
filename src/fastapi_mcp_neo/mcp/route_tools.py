@@ -19,6 +19,8 @@ the catalog small while restoring per-route client-side least privilege.
 
 from __future__ import annotations
 
+import keyword
+import logging
 import textwrap
 from collections.abc import Callable
 from typing import Any
@@ -36,7 +38,9 @@ from graphql import (
 )
 
 from fastapi_mcp_neo.handler import RouterGraphQLHandler
-from fastapi_mcp_neo.mcp.tools import DESTRUCTIVE, READ_ONLY
+from fastapi_mcp_neo.mcp.tools import DESTRUCTIVE, READ_ONLY, per_call_passthrough_headers
+
+logger = logging.getLogger(__name__)
 
 # Selection/JSON-Schema walk caps: past this object depth and past one
 # repetition of a recursive type, nested object fields are omitted (a
@@ -227,7 +231,8 @@ def _register_field_tool(
         if not selection and requires_fields:
             raise ToolError(
                 "this route's type has no fields within the selection "
-                "depth cap — pass `fields`, e.g. `{ <nested fields> }`"
+                f"depth cap — pass `{proj_name}`, e.g. "
+                "`{ <nested fields> }`"
             )
         if not selection:
             selection = default_selection
@@ -235,7 +240,13 @@ def _register_field_tool(
         header = f"{op}({decls})" if decls else op
         field_call = f"{field_name}({args})" if args else field_name
         document = f"{header}{{{wrap}{field_call} {selection}{close}}}"
-        result = await handler.execute(document, variables=variables or None)
+        # Per-caller credentials, same as graphql mode's executor: the
+        # caller's whitelisted headers ride this exact invocation (review
+        # #2 — tools mode used to drop them, 401-ing every protected route).
+        per_call = per_call_passthrough_headers(handler.passthrough_headers)
+        result = await handler.execute(
+            document, variables=variables or None, headers=per_call
+        )
         errors = result.get("errors")
         if errors:
             # Errors ride the MCP isError channel (raising), not the
@@ -247,19 +258,20 @@ def _register_field_tool(
         data = (data or {}).get(field_name)
         return {"data": data}
 
-    # Signature codegen: the EXECUTION VESSEL only. Requiredness and
-    # nested input typing live in the explicit parameters schema below —
-    # the GraphQL schema is the typing source, not the Python signature
-    # (delegating to signature derivation would flatten InputObjectType
-    # args into untyped dicts).
+    # A real route param named `fields` (sparse-fieldsets convention)
+    # would collide with the projection parameter — ours moves aside.
+    # (fastmcp binds arguments by signature, so the signature must carry
+    # the REAL names; non-identifier names are skipped at registration.)
+    proj_name = "select" if "fields" in arg_names else "fields"
+
     lines = [f"async def {field_name}("]
     for arg_name in arg_names:
         ann = _py_annotation(field.args[arg_name].type, nullable=True)
         lines.append(f"    {arg_name}: {ann} = None,")
-    lines.append("    fields: str | None = None,")
+    lines.append(f"    {proj_name}: str | None = None,")
     lines.append(") -> dict:")
     body = "{" + ", ".join(f'"{a}": {a}' for a in arg_names) + "}"
-    lines.append(f"    return await run({body}, fields=fields)")
+    lines.append(f"    return await run({body}, fields={proj_name})")
     src = textwrap.dedent("\n".join(lines))
     ns: dict[str, Any] = {"Any": Any, "run": run}
     exec(compile(src, f"<route-tools:{field_name}>", "exec"), ns)  # noqa: S102 - generated from the schema
@@ -276,8 +288,8 @@ def _register_field_tool(
     parts = [description] if description else []
     parts.append(f"GraphQL: `{signature}`")
     parts.append(
-        "`fields` (optional): a GraphQL selection set to project the "
-        "response, e.g. `{ id title }` — omit for the full type."
+        f"`{proj_name}` (optional): a GraphQL selection set to project "
+        "the response, e.g. `{ id title }` — omit for the full type."
     )
     description = "\n\n".join(parts)
 
@@ -302,7 +314,7 @@ def _register_field_tool(
     # GraphQL argument types: InputObjectType args keep their field-level
     # properties and requiredness; the `fields` projection arg rides along.
     properties: dict[str, Any] = {
-        "fields": {
+        proj_name: {
             "anyOf": [{"type": "string"}, {"type": "null"}],
             "default": None,
             "description": "GraphQL selection set to project the response, "
@@ -323,7 +335,7 @@ def _register_field_tool(
         properties[arg_name] = schema
     input_schema: dict[str, Any] = {"type": "object", "properties": properties}
     if requires_fields:
-        required_names.append("fields")
+        required_names.append(proj_name)
     if required_names:
         input_schema["required"] = required_names
     # Override the signature-derived schema with the GraphQL-derived one.
@@ -371,6 +383,27 @@ def register_route_tools(
             node = _unwrap(node.fields[seg].type)
         field = node.fields.get(route.field_name)
         if field is None:  # pragma: no cover - scanner and schema agree
+            continue
+        # fastmcp BINDS tool arguments by the signature (the overridden
+        # parameters schema is advertisement only), so argument names must
+        # be legal Python identifiers. Aliases only guarantee GraphQL-legal
+        # names — Query(alias="from") is outside fastmcp's tool ABI. Skip
+        # with a warning (degrade-and-notify); graphql mode still serves it.
+        bad = [
+            a
+            for a in field.args
+            if not a.isidentifier() or keyword.iskeyword(a)
+        ]
+        if bad:
+            logger.warning(
+                "tools mode skipped %s %s: argument name(s) %s are not "
+                "valid Python identifiers (fastmcp binds arguments by "
+                "signature); the route stays available in graphql/"
+                "progressive mode",
+                route.method,
+                route.path,
+                ", ".join(repr(a) for a in bad),
+            )
             continue
         _register_field_tool(
             mcp,

@@ -407,3 +407,123 @@ class TestEmptySelectionCap:
                 "chain", {"fields": "{ mid { d { dd { v } } } }"}
             )
         assert r.structured_content == {"data": {"mid": {"d": {"dd": {"v": 9}}}}}
+
+
+class TestPerCallerCredentials:
+    """Regression (review #2): tools mode dropped per-caller headers —
+    every protected route answered 401 while graphql mode worked. The
+    caller's whitelisted headers now ride each tool invocation."""
+
+    async def test_authorization_reaches_the_route(self):
+        from asgi_lifespan import LifespanManager
+        from fastmcp.client.transports import StreamableHttpTransport
+
+        from tests.support.apps import auth_app
+        from tests.support.mcp import asgi_client_factory
+
+        app = auth_app()
+        mcp = FastAPIMCP(
+            app, name="tools-auth", mode="tools", passthrough_headers=["authorization"]
+        )
+        mcp.mount_to(app, "/mcp")
+        transport = StreamableHttpTransport(
+            url="http://testserver/mcp/",
+            headers={"authorization": "Bearer jwt-alice"},
+            httpx_client_factory=asgi_client_factory(app),
+        )
+        async with LifespanManager(app):
+            async with Client(transport) as client:
+                r = await client.call_tool("whoami", {})
+        assert r.structured_content == {"data": {"user": "alice"}}
+        await mcp.handler.aclose()
+
+    async def test_passthrough_off_blocks_credentials(self):
+        from asgi_lifespan import LifespanManager
+        from fastmcp.client.transports import StreamableHttpTransport
+
+        from tests.support.apps import auth_app
+        from tests.support.mcp import asgi_client_factory
+
+        app = auth_app()
+        mcp = FastAPIMCP(app, name="tools-noauth", mode="tools", passthrough_headers=[])
+        mcp.mount_to(app, "/mcp")
+        transport = StreamableHttpTransport(
+            url="http://testserver/mcp/",
+            headers={"authorization": "Bearer jwt-alice"},
+            httpx_client_factory=asgi_client_factory(app),
+        )
+        async with LifespanManager(app):
+            async with Client(transport) as client:
+                with pytest.raises(ToolError, match="401"):
+                    await client.call_tool("whoami", {})
+        await mcp.handler.aclose()
+
+
+class TestVesselNameSanitization:
+    """Regression (review #3): raw GraphQL arg names crashed construction —
+    a route param named `fields` duplicated the projection parameter, and
+    aliases only guaranteed GraphQL-legal names (Python keywords are legal
+    GraphQL). The signature carries sanitized identifiers; the schema and
+    the document keep the real names."""
+
+    @pytest.fixture
+    def san_mcp(self):
+        from fastapi import Query
+        from pydantic import BaseModel
+
+        class SparseOut(BaseModel):
+            q: str
+            note: str
+
+        app = FastAPI()
+
+        @app.get("/sparse", tags=["san"])
+        async def sparse(q: str = "", fields: str = "id,title") -> SparseOut:
+            return SparseOut(q=q, note=fields)
+
+        @app.get("/kw", tags=["san"])
+        async def kw_alias(from_: str = Query(alias="from")) -> str:
+            return from_
+
+        return FastAPIMCP(app, name="san", mode="tools")
+
+    async def test_construction_survives_and_names_stay_real(self, caplog):
+        from fastapi import Query
+        from pydantic import BaseModel
+
+        class SparseOut(BaseModel):
+            q: str
+            note: str
+
+        app = FastAPI()
+
+        @app.get("/sparse", tags=["san"])
+        async def sparse(q: str = "", fields: str = "id,title") -> SparseOut:
+            return SparseOut(q=q, note=fields)
+
+        @app.get("/kw", tags=["san"])
+        async def kw_alias(from_: str = Query(alias="from")) -> str:
+            return from_
+
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.route_tools"):
+            mcp = FastAPIMCP(app, name="san", mode="tools")
+        async with Client(mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        # keyword-alias route: outside fastmcp's signature-binding ABI —
+        # skipped WITH a warning, not a crash
+        assert sorted(tools) == ["sparse"]
+        assert "'from'" in caplog.text and "/kw" in caplog.text
+        # the route's OWN fields param is an ordinary typed arg...
+        assert tools["sparse"].inputSchema["properties"]["fields"] == {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": "id,title",
+        }
+        # ...and the projection parameter moved aside
+        assert "select" in tools["sparse"].inputSchema["properties"]
+
+    async def test_calls_work_through_the_renamed_projection(self, san_mcp):
+        async with Client(san_mcp.mcp) as client:
+            sparse = await client.call_tool(
+                "sparse", {"select": "{ q }"}  # projection via renamed param
+            )
+        assert sparse.structured_content == {"data": {"q": ""}}  # projection drops note

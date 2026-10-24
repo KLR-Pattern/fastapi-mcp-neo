@@ -128,7 +128,7 @@ def _document_matches(document: str, *, mutation: bool) -> bool:
     return all(op == expected for op in operations)
 
 
-def _per_call_passthrough_headers(allowed: tuple[str, ...]) -> dict[str, Any]:
+def per_call_passthrough_headers(allowed: tuple[str, ...]) -> dict[str, Any]:
     """Whitelisted headers off the MCP caller's own HTTP request, if any.
 
     fastmcp's accessor never raises: with no live HTTP request (in-memory
@@ -162,7 +162,7 @@ async def _execute(
             hint="Send the document to the matching tool.",
         )
     try:
-        per_call = _per_call_passthrough_headers(handler.passthrough_headers)
+        per_call = per_call_passthrough_headers(handler.passthrough_headers)
         result = await handler.execute(document, variables=variables, headers=per_call)
     except Exception as e:  # pragma: no cover - defensive
         return create_error_response(str(e), GQLMCPErrors.INTERNAL_ERROR)
