@@ -181,7 +181,7 @@ def _register_field_tool(
     mcp: Any,
     handler: RouterGraphQLHandler,
     *,
-    domain: str,
+    domain_path: tuple[str, ...],
     field: Any,
     field_name: str,
     is_mutation: bool,
@@ -189,6 +189,9 @@ def _register_field_tool(
     from fastmcp.tools import FunctionTool
 
     arg_names = list(field.args)
+
+    wrap = "".join(f"{seg} {{" for seg in domain_path)
+    close = "}" * len(domain_path)
 
     async def run(payload: dict[str, Any], *, fields: str | None = None) -> dict[str, Any]:
         from fastmcp.exceptions import ToolError
@@ -211,14 +214,17 @@ def _register_field_tool(
         op = "mutation" if is_mutation else "query"
         header = f"{op}({decls})" if decls else op
         field_call = f"{field_name}({args})" if args else field_name
-        document = f"{header}{{{domain}{{{field_call} {selection}}}}}"
+        document = f"{header}{{{wrap}{field_call} {selection}{close}}}"
         result = await handler.execute(document, variables=variables or None)
         errors = result.get("errors")
         if errors:
             # Errors ride the MCP isError channel (raising), not the
             # structured payload — output_schema describes success only.
             raise ToolError("; ".join(str(e.get("message", e)) for e in errors))
-        data = (result.get("data") or {}).get(domain, {}).get(field_name)
+        data: Any = result.get("data") or {}
+        for seg in domain_path:
+            data = (data or {}).get(seg, {})
+        data = (data or {}).get(field_name)
         return {"data": data}
 
     # Signature codegen: the EXECUTION VESSEL only. Requiredness and
@@ -320,27 +326,37 @@ def register_route_tools(
     *,
     allow_mutation: bool = False,
 ) -> int:
-    """Register one tool per GraphQL field — the whole toolset of tools
-    mode. Composition is NOT offered here: this mode's granularity is the
-    tool, and clients compose via parallel tool calls; composition queries
-    belong to graphql/progressive mode. Returns the number of tools."""
+    """Register one tool per route — the whole toolset of tools mode.
+
+    Domain structure is INERT here (the agent never writes documents),
+    so registration iterates the ROUTE list and follows each route's
+    domain path — already split on multi-segment tags at scan time
+    ("iam:users" -> ("iam", "users")) — only to locate the field in the
+    schema and wrap the internal document. The group tree's depth is
+    irrelevant by construction. Returns the number of tools registered."""
     schema: GraphQLSchema = handler.schema
-
-    def register_group(group_type: Any, is_mutation: bool) -> int:
-        count = 0
-        for domain, domain_field in group_type.fields.items():
-            inner = _unwrap(domain_field.type)
-            if not isinstance(inner, GraphQLObjectType):  # pragma: no cover - defensive
-                continue
-            for field_name, field in inner.fields.items():
-                _register_field_tool(
-                    mcp, handler, domain=domain, field=field, field_name=field_name,
-                    is_mutation=is_mutation,
-                )
-                count += 1
-        return count
-
-    total = register_group(schema.query_type, is_mutation=False)
-    if allow_mutation and schema.mutation_type:
-        total += register_group(schema.mutation_type, is_mutation=True)
-    return total
+    count = 0
+    for route in handler.routes:
+        root = schema.mutation_type if route.is_mutation else schema.query_type
+        if root is None:  # pragma: no cover - the scanner gates mutations already
+            continue
+        # A multi-tag route lives under several domain paths in the schema;
+        # tools mode is one-tool-per-route, so pick one (deterministic:
+        # sorted first) purely to wrap the internal document.
+        domain_path = sorted(route.domains)[0] if route.domains else ()
+        node: Any = root
+        for seg in domain_path:
+            node = _unwrap(node.fields[seg].type)
+        field = node.fields.get(route.field_name)
+        if field is None:  # pragma: no cover - scanner and schema agree
+            continue
+        _register_field_tool(
+            mcp,
+            handler,
+            domain_path=domain_path,
+            field=field,
+            field_name=route.field_name,
+            is_mutation=route.is_mutation,
+        )
+        count += 1
+    return count

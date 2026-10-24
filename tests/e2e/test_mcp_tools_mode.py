@@ -291,3 +291,56 @@ class TestSchemaEdges:
         two = one["properties"]["two"]
         three = two["properties"]["three"]
         assert three == {"type": "object"}  # capped: no properties below
+
+
+class TestMultiSegmentTags:
+    """Regression (review #1): multi-segment tags (iam:users) nest group
+    types arbitrarily deep. Registration is route-driven and follows the
+    pre-split domain path, so tools register per ROUTE regardless of the
+    group tree's depth — never per subgroup, never blind-firing a group."""
+
+    @pytest.fixture
+    def seg_mcp(self):
+        from pydantic import BaseModel
+
+        class UserOut(BaseModel):
+            uid: int
+            name: str
+
+        class RoleOut(BaseModel):
+            name: str
+
+        app = FastAPI()
+
+        @app.get("/users/{uid}", tags=["iam:users"])
+        async def get_user(uid: int) -> UserOut:
+            return UserOut(uid=uid, name="alice")
+
+        @app.delete("/users/{uid}", tags=["iam:users"])
+        async def delete_user(uid: int) -> bool:
+            return True
+
+        @app.get("/roles", tags=["iam:roles"])
+        async def list_roles() -> list[RoleOut]:
+            return [RoleOut(name="admin")]
+
+        return FastAPIMCP(app, name="multi", mode="tools")
+
+    async def test_tools_register_per_route_not_per_subgroup(self, seg_mcp):
+        async with Client(seg_mcp.mcp) as client:
+            names = sorted(t.name for t in await client.list_tools())
+        assert names == ["delete_user", "get_user", "list_roles"]
+
+    async def test_deeply_nested_paths_call_their_own_route(self, seg_mcp):
+        async with Client(seg_mcp.mcp) as client:
+            r = await client.call_tool("get_user", {"uid": 7})
+            roles = await client.call_tool("list_roles", {})
+            mut = await client.call_tool("delete_user", {"uid": 7})
+        assert r.structured_content == {"data": {"uid": 7, "name": "alice"}}
+        assert roles.structured_content == {"data": [{"name": "admin"}]}
+        assert mut.structured_content == {"data": True}
+
+    async def test_untagged_default_domain_still_works(self, mcp):
+        async with Client(mcp.mcp) as client:
+            names = sorted(t.name for t in await client.list_tools())
+        assert "get_user" in names  # users_app single-segment, unchanged
