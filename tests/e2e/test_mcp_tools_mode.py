@@ -150,3 +150,144 @@ class TestCombination:
         async with Client(mcp.mcp) as client:
             r = await client.call_tool("ping", {})
         assert r.structured_content == {"data": {"ok": True}}
+
+
+class TestSchemaEdges:
+    """Mapper edge branches: enums, JSON scalars, nullable list items,
+    and the deep-input walk cap."""
+
+    @pytest.fixture
+    def edges_mcp(self):
+        from enum import Enum
+        from typing import Literal
+
+        from pydantic import BaseModel
+
+        class Level3(BaseModel):
+            v: int
+
+        class Level2(BaseModel):
+            three: Level3
+            nums: list[int | None] = []
+
+        class Level1(BaseModel):
+            two: Level2
+
+        class DeepIn(BaseModel):
+            one: Level1
+
+        class Color(str, Enum):
+            red = "red"
+            blue = "blue"
+
+        class ThingOut(BaseModel):
+            color: Color
+            note: str
+
+        app = FastAPI()
+
+        @app.get("/things", tags=["edges"])
+        async def list_things(kind: Literal["a", "b"] = "a") -> list[ThingOut | None]:
+            return [ThingOut(color=Color.red, note="x"), None]
+
+        class DeepOut(BaseModel):
+            one: Level1
+
+        @app.get("/blob", tags=["edges"])
+        async def blob() -> dict:
+            return {"any": [1, 2]}
+
+        @app.get("/search", tags=["edges"])
+        async def search(
+            tags: list[str] | None = None,
+            color: Color = Color.red,
+            meta: dict | None = None,
+        ) -> DeepOut:
+            return DeepOut(one=Level1(two=Level2(three=Level3(v=1))))
+
+        @app.post("/deep", tags=["edges"])
+        async def deep(payload: DeepIn) -> bool:
+            return True
+
+        return FastAPIMCP(app, name="edges", mode="tools")
+
+    async def test_enum_arg_enum_field_literal_scalar(self, edges_mcp):
+        """Enum -> GraphQLEnumType (values in the schema); Literal -> its
+        underlying scalar with the default carried (this repo's mapping)."""
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        kind = tools["list_things"].inputSchema["properties"]["kind"]
+        assert kind == {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": "a",
+        }
+        data = tools["list_things"].outputSchema["properties"]["data"]
+        array = data["anyOf"][0] if "anyOf" in data else data  # nullable field
+        item = array["items"]["anyOf"][0]  # nullable list items
+        assert item["properties"]["color"]["enum"] == ["red", "blue"]
+
+    async def test_nullable_list_items_null_union(self, edges_mcp):
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        data = tools["list_things"].outputSchema["properties"]["data"]
+        array = data["anyOf"][0] if "anyOf" in data else data
+        items = array["items"]
+        assert "anyOf" in items and {"type": "null"} in items["anyOf"]
+
+    async def test_json_scalar_response_is_any(self, edges_mcp):
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        data = tools["blob"].outputSchema["properties"]["data"]
+        assert data == {"anyOf": [{}, {"type": "null"}]}
+
+    async def test_deep_input_walk_caps(self, edges_mcp):
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        payload = tools["deep"].inputSchema["properties"]["payload"]
+        one = payload["properties"]["one"]
+        two = one["properties"]["two"]
+        three = two["properties"]["three"]
+        assert three == {"type": "object"}  # capped: no properties below
+        # nullable list items inside a body model carry the null-union
+        nums = two["properties"]["nums"]  # nullable-with-default: union wrap
+        assert nums["anyOf"][0]["items"] == {
+            "anyOf": [{"type": "integer"}, {"type": "null"}]
+        }
+
+    async def test_default_full_selection_walk_caps(self, edges_mcp):
+        """Calling without `fields` walks the default full selection, which
+        omits object fields past the depth cap instead of recursing."""
+        async with Client(edges_mcp.mcp) as client:
+            r = await client.call_tool("search", {})
+        one = r.structured_content["data"]["one"]
+        # the default selection OMITS object fields past the depth cap
+        # (a bare object field would be an invalid document); leaves stay
+        assert "three" not in one["two"]
+        assert one["two"]["nums"] == []
+
+    async def test_list_enum_json_args(self, edges_mcp):
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        props = tools["search"].inputSchema["properties"]
+        assert props["tags"] == {
+            "anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}],
+            "default": None,
+        }
+        assert props["color"] == {
+            "anyOf": [{"type": "string", "enum": ["red", "blue"]}, {"type": "null"}],
+            "default": "red",
+        }
+        assert props["meta"] == {
+            "anyOf": [{}, {"type": "null"}],
+            "default": None,
+        }  # JSON scalar: any shape
+
+    async def test_deep_output_walk_caps(self, edges_mcp):
+        async with Client(edges_mcp.mcp) as client:
+            tools = {t.name: t for t in await client.list_tools()}
+        data = tools["search"].outputSchema["properties"]["data"]
+        data = data["anyOf"][0] if "anyOf" in data else data
+        one = data["properties"]["one"]
+        two = one["properties"]["two"]
+        three = two["properties"]["three"]
+        assert three == {"type": "object"}  # capped: no properties below

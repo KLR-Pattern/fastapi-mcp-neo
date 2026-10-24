@@ -86,7 +86,13 @@ def _full_selection(t: GraphQLType, depth: int = 0, seen: frozenset[str] = froze
     parts = []
     for fname, f in base.fields.items():
         sel = _full_selection(f.type, depth + 1, seen | {base.name})
-        parts.append(f"{fname} {sel}".strip())
+        if sel:
+            parts.append(f"{fname} {sel}")
+        elif not isinstance(_unwrap(f.type), GraphQLObjectType):
+            parts.append(fname)  # leaf: scalar/list/enum, no selection needed
+        # else: object field at the depth cap (or recursive repeat) — a
+        # bare object field would be an invalid document; omit it (the
+        # agent can select it explicitly via `fields`)
     return "{ " + " ".join(parts) + " }"
 
 
@@ -125,7 +131,7 @@ def _json_schema(
         # of these shapes, and output_schema is static per tool — properties
         # describe what MAY come back, matching GraphQL selection semantics.
         return {"type": "object", "properties": props}
-    return {}
+    return {}  # pragma: no cover - unions degrade to JSON before this point
 
 
 def _input_json_schema(
@@ -168,7 +174,7 @@ def _input_json_schema(
         if required:
             out["required"] = required
         return out
-    return {}
+    return {}  # pragma: no cover - unions degrade to JSON before this point
 
 
 def _register_field_tool(
@@ -280,10 +286,15 @@ def _register_field_tool(
     required_names: list[str] = []
     for arg_name in arg_names:
         arg = field.args[arg_name]
-        properties[arg_name] = _input_json_schema(arg.type)
+        schema = _input_json_schema(arg.type)
         has_default = arg.default_value is not Undefined
         if is_non_null_type(arg.type) and not has_default:
             required_names.append(arg_name)
+        else:
+            schema = _null_union(schema)
+            if has_default:
+                schema["default"] = arg.default_value
+        properties[arg_name] = schema
     input_schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required_names:
         input_schema["required"] = required_names
@@ -319,7 +330,7 @@ def register_route_tools(
         count = 0
         for domain, domain_field in group_type.fields.items():
             inner = _unwrap(domain_field.type)
-            if not isinstance(inner, GraphQLObjectType):
+            if not isinstance(inner, GraphQLObjectType):  # pragma: no cover - defensive
                 continue
             for field_name, field in inner.fields.items():
                 _register_field_tool(
