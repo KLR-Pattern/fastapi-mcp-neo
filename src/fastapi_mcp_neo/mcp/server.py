@@ -125,11 +125,12 @@ class FastAPIMCP:
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
         allow_mutation: bool = False,
-        mode: Literal["auto", "simple", "progressive"] = "auto",
+        mode: Literal["auto", "simple", "progressive", "tools"] = "auto",
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
         progressive_threshold: int = PROGRESSIVE_THRESHOLD,
         mutation_include: Sequence[str] | None = None,
+        escape_hatch: bool = False,
         passthrough_headers: Sequence[str] | None = None,
         auth: Any | None = None,
         request_timeout: float | None = 30.0,
@@ -157,12 +158,16 @@ class FastAPIMCP:
             document_cache_size=document_cache_size,
         )
         self._resolved_mode = self._resolve_mode(mode)
+        self._escape_hatch = escape_hatch
         self._domains = DomainRegistry(self._handler.routes)
         self._mcp = self._build_mcp(name, allow_mutation, auth, instructions)
 
     def _resolve_mode(
-        self, mode: Literal["auto", "simple", "progressive"]
-    ) -> Literal["simple", "progressive"]:
+        self,
+        mode: Literal["auto", "simple", "progressive", "tools"],
+    ) -> Literal["simple", "progressive", "tools"]:
+        if mode == "tools":
+            return "tools"
         if mode == "simple":
             return "simple"
         if mode == "progressive":
@@ -184,7 +189,7 @@ class FastAPIMCP:
         return "simple"
 
     @property
-    def resolved_mode(self) -> Literal["simple", "progressive"]:
+    def resolved_mode(self) -> Literal["simple", "progressive", "tools"]:
         """The mode actually in effect — ``auto`` is already resolved here,
         so this never returns ``auto`` (unlike the ``mode`` constructor
         argument, which records what was requested)."""
@@ -201,7 +206,16 @@ class FastAPIMCP:
         from fastmcp import FastMCP
 
         mcp = FastMCP(name, auth=auth, instructions=instructions)
-        if self._resolved_mode == "progressive":
+        if self._resolved_mode == "tools":
+            from fastapi_mcp_neo.mcp.route_tools import register_route_tools
+
+            register_route_tools(
+                mcp,
+                self._handler,
+                escape_hatch=self._escape_hatch,
+                allow_mutation=allow_mutation,
+            )
+        elif self._resolved_mode == "progressive":
             from fastapi_mcp_neo.mcp.progressive_tools import register_progressive_tools
 
             register_progressive_tools(
