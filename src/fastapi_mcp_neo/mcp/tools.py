@@ -81,10 +81,10 @@ def register_executor_tools(
             return await _execute(handler, mutation, variables, mutation=True)
 
 
-def register_simple_tools(
+def register_graphql_tools(
     mcp: FastMCP, handler: RouterGraphQLHandler, *, allow_mutation: bool
 ) -> None:
-    """Register get_schema + executor tools (small apps, one-shot discovery)."""
+    """Register get_schema + executor tools — graphql mode, one-shot SDL discovery."""
 
     @mcp.tool(annotations=READ_ONLY)
     def get_schema() -> dict[str, Any]:

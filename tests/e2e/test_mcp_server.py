@@ -15,20 +15,33 @@ from tests.support.mcp import tool_payload
 
 
 class TestServerBehavior:
-    async def test_auto_mode_small_app_is_simple(self):
+    async def test_default_mode_is_graphql(self):
         mcp = FastAPIMCP(users_app(), name="ro")
-        assert mcp.resolved_mode == "simple"
+        assert mcp.resolved_mode == "graphql"
 
-    async def test_auto_mode_big_app_goes_progressive(self):
-        mcp = FastAPIMCP(big_app(30), name="big", progressive_threshold=25)
+    async def test_graphql_mode_warns_above_threshold(self, caplog):
+        """The mode never switches implicitly — big apps get a startup
+        warning advising progressive instead."""
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            mcp = FastAPIMCP(big_app(30), name="big", progressive_threshold=25)
+        assert mcp.resolved_mode == "graphql"
+        assert "progressive" in caplog.text and "30 routes" in caplog.text
+
+    async def test_graphql_mode_no_warning_below_threshold(self, caplog):
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            FastAPIMCP(users_app(), name="ro")
+        assert "Consider mode=" not in caplog.text
+
+    async def test_explicit_progressive_mode_registers_layered_tools(self):
+        mcp = FastAPIMCP(big_app(30), name="big", mode="progressive")
         assert mcp.resolved_mode == "progressive"
         async with Client(mcp.mcp) as client:
             tools = [t.name for t in await client.list_tools()]
         assert "list_domains" in tools and "graphql_query" in tools
 
-    async def test_auto_mode_counts_include_router_routes(self):
+    async def test_warning_counts_include_router_routes(self, caplog):
         """FastAPI >= 0.142 wraps include_router results in _IncludedRouter
-        (not APIRoute instances); the threshold decision must follow the
+        (not APIRoute instances); the warning threshold must follow the
         SCANNED route count, not isinstance(app.routes, APIRoute)."""
         class Out(BaseModel):
             id: int
@@ -47,18 +60,21 @@ class TestServerBehavior:
         app = FastAPI()
         app.include_router(sub, prefix="/things")
 
-        mcp = FastAPIMCP(app, name="inc", progressive_threshold=25)
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            mcp = FastAPIMCP(app, name="inc", progressive_threshold=25)
         assert len(mcp.handler.routes) == 30
-        assert mcp.resolved_mode == "progressive"
+        assert mcp.resolved_mode == "graphql"
+        assert "30 routes" in caplog.text
 
-    async def test_auto_mode_respects_include_filter(self):
-        """Route count for the threshold is the count that ENTERS the schema
+    async def test_warning_respects_include_filter(self, caplog):
+        """Route count for the warning is the count that ENTERS the schema
         (include/exclude applied), not the raw app.route count."""
-        mcp = FastAPIMCP(
-            big_app(30), name="filtered", include=["/thing0", "/thing1", "/thing2"]
-        )
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            mcp = FastAPIMCP(
+                big_app(30), name="filtered", include=["/thing0", "/thing1", "/thing2"]
+            )
         assert len(mcp.handler.routes) == 3
-        assert mcp.resolved_mode == "simple"
+        assert "Consider mode=" not in caplog.text
 
     async def test_domains_registry_built(self):
         mcp = FastAPIMCP(users_app(), name="test-api")
@@ -149,7 +165,7 @@ class TestTagFiltering:
 
         mcp = FastAPIMCP(big, name="core-only", include_tags=["core"])
         assert len(mcp.handler.routes) == 4
-        assert mcp.resolved_mode == "simple"
+        assert mcp.resolved_mode == "graphql"
 
     async def test_two_instances_same_app_different_tags(self):
         """The motivating scenario: one app, one MCP deployment per use
@@ -174,7 +190,12 @@ class TestDeprecatedAlias:
         with pytest.warns(DeprecationWarning, match="FastAPIMCP"):
             mcp = RouterMCP(users_app(), name="alias")
         assert isinstance(mcp, FastAPIMCP)
-        assert mcp.resolved_mode == "simple"
+        assert mcp.resolved_mode == "graphql"
+
+    def test_simple_mode_alias_warns_and_resolves_graphql(self):
+        with pytest.warns(DeprecationWarning, match='mode="simple"'):
+            mcp = FastAPIMCP(users_app(), name="alias", mode="simple")
+        assert mcp.resolved_mode == "graphql"
 
 
 class TestReadiness:
