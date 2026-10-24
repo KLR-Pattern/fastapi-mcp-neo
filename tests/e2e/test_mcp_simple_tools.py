@@ -109,8 +109,17 @@ class TestMutationTool:
             )
         assert result["data"]["data"]["iam"]["create_user"]["name"] == "carol"
 
+    async def test_mutation_tool_registered_by_default(self):
+        """Writes are exposed by default (0.15.0): the bridge mirrors the
+        app, the app's own auth gates per caller, and the mutation tool
+        carries destructiveHint."""
+        mcp = FastAPIMCP(users_app(), name="rw")
+        async with Client(mcp.mcp) as client:
+            tools = await client.list_tools()
+        assert [t.name for t in tools] == ["get_schema", "graphql_query", "graphql_mutation"]
+
     async def test_no_mutation_tool_when_disabled(self):
-        mcp = FastAPIMCP(users_app(), name="ro")
+        mcp = FastAPIMCP(users_app(), name="ro", allow_mutation=False)
         async with Client(mcp.mcp) as client:
             tools = await client.list_tools()
         assert [t.name for t in tools] == ["get_schema", "graphql_query"]

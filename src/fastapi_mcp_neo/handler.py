@@ -54,7 +54,7 @@ class RouterGraphQLHandler:
         exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
-        allow_mutation: bool = False,
+        allow_mutation: bool = True,
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
         mutation_include: Sequence[str] | None = None,

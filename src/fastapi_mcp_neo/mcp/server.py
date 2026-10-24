@@ -64,7 +64,11 @@ class FastAPIMCP:
             untagged routes stay. Tag filters AND with path filters (a
             route must pass both); dropping is silent, like path filters.
         allow_mutation: Expose POST/PUT/PATCH/DELETE routes as GraphQL
-            mutations. Default False (read-only).
+            mutations. Default True — the bridge mirrors the app (a route
+            that works over HTTP stays callable here), and the app's own
+            auth gates writes per caller; the mutation tool carries
+            destructiveHint so clients confirm writes. Pass False for a
+            read-only view.
         mutation_include: fnmatch globs limiting WHICH write routes become
             mutations (requires allow_mutation=True).
         passthrough_headers: Whitelist of inbound header names (case
@@ -133,7 +137,7 @@ class FastAPIMCP:
         exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
-        allow_mutation: bool = False,
+        allow_mutation: bool = True,
         mode: Literal["graphql", "progressive", "tools", "simple"] = "graphql",
         include_hidden: bool = False,
         exclude_deprecated: bool = False,

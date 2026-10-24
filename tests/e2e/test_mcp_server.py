@@ -212,8 +212,12 @@ class TestDeprecatedAlias:
 class TestReadiness:
     async def test_report_scoped_to_the_deployment(self):
         """The checklist reflects what THIS deployment would expose: /ping
-        (a raw-JSON bridge) is tag-filtered out and never reported."""
-        mcp = FastAPIMCP(multi_domain_app(), name="iam-api", include_tags=["iam:*"])
+        (a raw-JSON bridge) is tag-filtered out and never reported; /users
+        is skipped because this deployment is read-only."""
+        mcp = FastAPIMCP(
+            multi_domain_app(), name="iam-api", include_tags=["iam:*"],
+            allow_mutation=False,
+        )
         report = mcp.handler.readiness()
         assert [s.path for s in report.skips] == ["/users"]  # POST, mutation off
         assert report.skips[0].tags == ("iam:users",)

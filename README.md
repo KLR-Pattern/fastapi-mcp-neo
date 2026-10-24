@@ -17,7 +17,7 @@ app = FastAPI()
 # ... your existing routes ...
 
 mcp = FastAPIMCP(app, name="my-app")
-mcp.run()  # HTTP MCP server with get_schema + graphql_query tools
+mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 ```
 
 **Contents** — [Installation](#installation) · [Why](#why) ·
@@ -41,7 +41,7 @@ composition, whole-payload responses. fastapi-mcp-neo instead derives a **GraphQ
 schema** from your routes (Apollo's "GraphQL as the MCP contract" pattern), so
 agents get:
 
-- **a constant tool set** (2 in simple mode, up to 6 with progressive
+- **a constant tool set** (3 in graphql mode, up to 7 with progressive
   disclosure) — never one tool per endpoint; discovery tools and
   `graphql_query` carry the `readOnlyHint` MCP annotation,
   `graphql_mutation` the `destructiveHint`, so agents can auto-run reads
@@ -159,9 +159,11 @@ The shape follows two rules:
 <details>
 <summary><b>Rules worth knowing</b> — mutation gating &amp; ordering, recursive true-depth, the unroll limit, route filters, tag semantics</summary>
 
-- **Mutations are off by default** (`allow_mutation=True` to expose writes;
-  `mutation_include=[...]` globs to whitelist specific write routes);
-  `graphql_query` also refuses mutation documents.
+- **Writes are exposed by default** — the bridge mirrors the app, and the
+  app's own auth gates them per caller (`allow_mutation=False` for a
+  read-only view; `mutation_include=[...]` globs to whitelist specific
+  write routes). `graphql_mutation` carries `destructiveHint`, so clients
+  confirm writes; `graphql_query` refuses mutation documents.
 - **Mutation ordering**: per the GraphQL spec, mutation fields at the ROOT
   execute serially in declaration order — with the grouped schema that means
   writes in DIFFERENT domains are ordered; writes grouped under the SAME
@@ -284,7 +286,7 @@ exposes them (`path`, `method`, `reason`) for CI assertions, and
 | `Form()` / `File()` body | MCP tool arguments are JSON; the protocol has no file channel yet (SEP-2631 draft). The route stays available over plain HTTP |
 | required header/cookie parameter | headers are not GraphQL arguments — make it optional; caller credentials ride `passthrough_headers` |
 | query-parameter model mixed with plain params | FastAPI itself cannot serve that shape on the wire; move the plain params into the model |
-| write verbs with `allow_mutation=False` (the default) | opt in with `allow_mutation=True` or `mutation_include` |
+| write verbs, when you pass `allow_mutation=False` (read-only view) | writes are exposed by default; narrow them with `mutation_include` or hide with `allow_mutation=False` |
 | hidden route (`include_in_schema=False`) | opt in with `include_hidden=True` |
 | returns a raw `Response` (streaming, plain text) | no typed body to expose |
 | response/parameter annotation with no mapping at all (`-> bytes`, a bare custom class, mixed-type `Literal`) | no per-field shape exists to degrade to — annotate with a JSON-compatible type |
@@ -354,7 +356,6 @@ context). Use `mount_to(app, "/mcp")` to serve MCP on the app's own port.
 mcp = FastAPIMCP(
     app,
     name="my-app",
-    allow_mutation=False,
     include=["/api/*"],
     include_tags=["iam:*"],  # keep only routes tagged iam:… (untagged drop)
     # The caller's own Authorization header travels to the routes by default;
@@ -384,7 +385,7 @@ to the endpoint, this is what happens — and what it costs in context:
    graphql_query — one call composes any routes: fields from different
    domains, aliases, field projection. A failing route nulls only its
    own field; siblings survive.
-   graphql_mutation — writes (if allow_mutation=True)
+   graphql_mutation — writes (exposed by default; destructiveHint asks clients to confirm)
 
 ④ Credentials (if auth= is configured)
    First connect → OAuth 2.1 login (browser opens, user authorizes)
