@@ -527,3 +527,74 @@ class TestVesselNameSanitization:
                 "sparse", {"select": "{ q }"}  # projection via renamed param
             )
         assert sparse.structured_content == {"data": {"q": ""}}  # projection drops note
+
+
+class TestNameCollisions:
+    """Regression (review #4): same-named functions in different domains
+    silently replaced each other in the tool registry. Names now resolve
+    through an identity ladder; groups skip level 1 symmetrically."""
+
+    @pytest.fixture
+    def col_mcp(self):
+        from pydantic import BaseModel
+
+        class UOut(BaseModel):
+            uid: int
+
+        app = FastAPI()
+
+        @app.get("/a/{uid}", tags=["iam"])
+        async def get_user(uid: int) -> UOut:
+            return UOut(uid=uid)
+
+        @app.get("/b/{uid}", tags=["billing"])
+        async def get_user(uid: int) -> UOut:  # noqa: F811
+            return UOut(uid=uid * 10)
+
+        @app.get("/literal", tags=["misc"])
+        async def iam_get_user() -> bool:
+            return True
+
+        return FastAPIMCP(app, name="collide", mode="tools")
+
+    async def test_ladder_resolves_all_levels(self, col_mcp):
+        async with Client(col_mcp.mcp) as client:
+            names = sorted(t.name for t in await client.list_tools())
+            a = await client.call_tool("get_user_get_a_uid", {"uid": 2})
+            b = await client.call_tool("billing_get_user", {"uid": 2})
+            lit = await client.call_tool("iam_get_user", {})
+        # level 2 (domain), level 3 (path — level 2 stolen by the literal),
+        # and the untouched unique name, all distinct
+        assert names == ["billing_get_user", "get_user_get_a_uid", "iam_get_user"]
+        assert a.structured_content == {"data": {"uid": 2}}
+        assert b.structured_content == {"data": {"uid": 20}}
+        assert lit.structured_content == {"data": True}
+
+    async def test_long_path_collision_truncates_with_hash(self, caplog):
+        from pydantic import BaseModel
+
+        class Out(BaseModel):
+            ok: bool
+
+        app = FastAPI()
+        seg = "z" * 60
+
+        @app.get(f"/{seg}/{{uid}}", tags=["deep"])
+        async def probe(uid: int) -> Out:
+            return Out(ok=True)
+
+        @app.get("/p", tags=["alt"])
+        async def probe(uid: int = 0) -> Out:  # noqa: F811
+            return Out(ok=False)
+
+        @app.get("/short", tags=["misc"])
+        async def deep_probe() -> bool:
+            return True
+
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.route_tools"):
+            mcp = FastAPIMCP(app, name="trunc", mode="tools")
+        async with Client(mcp.mcp) as client:
+            names = [t.name for t in await client.list_tools()]
+        assert all(len(n) <= 64 for n in names)
+        assert len(set(names)) == 3
+        assert "host bound" in caplog.text

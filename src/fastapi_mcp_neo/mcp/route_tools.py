@@ -19,8 +19,10 @@ the catalog small while restoring per-route client-side least privilege.
 
 from __future__ import annotations
 
+import hashlib
 import keyword
 import logging
+import re
 import textwrap
 from collections.abc import Callable
 from typing import Any
@@ -193,6 +195,7 @@ def _register_field_tool(
     field: Any,
     field_name: str,
     is_mutation: bool,
+    tool_name: str | None = None,
 ) -> None:
     from fastmcp.tools import FunctionTool
 
@@ -305,7 +308,7 @@ def _register_field_tool(
     }
     tool = FunctionTool.from_function(
         fn,
-        name=field_name,
+        name=tool_name or field_name,
         description=description,
         annotations=DESTRUCTIVE if is_mutation else READ_ONLY,
         output_schema=output_schema,
@@ -354,6 +357,94 @@ def _sdl_type(t: GraphQLType) -> str:
     return getattr(t, "name", "JSON")
 
 
+# MCP hosts commonly cap tool names at 64 chars (n8n/openai rejected
+# longer — tadata-org/fastapi_mcp#161); fastmcp itself accepts any length,
+# so this is a compatibility bound, not a local rule.
+_MAX_TOOL_NAME = 64
+
+
+def _path_segments(path: str) -> list[str]:
+    """'/users/{uid}' -> ['users', 'uid'] — sanitized, params unbraced."""
+    segs = []
+    for seg in path.split("/"):
+        seg = re.sub(r"\W", "_", seg.strip("{}"))
+        if seg:
+            segs.append(seg)
+    return segs
+
+
+def _resolve_tool_names(entries: list[tuple[Any, Any, tuple[str, ...]]]) -> list[str]:
+    """One tool name per entry, unique across the registry.
+
+    Identity escalation ladder, per the route's own keys:
+      1. field_name (function name) — the common case, zero pollution
+      2. domain path + field name — resolves every schema-level collision
+         (same-domain duplicates fail fast at scan, so real collisions are
+         always cross-domain)
+      3. field name + method + path — the canonical identity (method+path
+         is the only globally unique key a route has)
+      4. numeric suffix — pathological residue
+
+    Names exceeding the host length bound are hash-truncated (deterministic,
+    unique) with a warning — erroring would kill construction for a
+    host-compatibility risk fastmcp itself does not enforce.
+    """
+    from collections import Counter
+
+    bases = Counter(e[0].field_name for e in entries)
+    used: set[str] = set()
+    names: list[str] = []
+    groups: dict[str, list[str]] = {}
+
+    def _finalize(name: str, route: Any) -> str:
+        if len(name) > _MAX_TOOL_NAME:
+            digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+            name = f"{name[: _MAX_TOOL_NAME - 7]}_{digest}"
+            logger.warning(
+                "tools mode: name for %s %s exceeded the %d-char host "
+                "bound; truncated to %r (unique via hash suffix)",
+                route.method, route.path, _MAX_TOOL_NAME, name,
+            )
+        used.add(name)
+        return name
+
+    # Pass 1 — unambiguous function names take the bare name (and claim it
+    # FIRST, so a ladder can never steal a unique name from its owner).
+    resolved: dict[int, str] = {}
+    for i, (route, _field, _dp) in enumerate(entries):
+        if bases[route.field_name] == 1:
+            resolved[i] = _finalize(route.field_name, route)
+    # Pass 2 — colliding groups skip level 1 symmetrically (no
+    # first-comes-keeps-the-bare-name asymmetry) and escalate by identity.
+    for i, (route, _field, domain_path) in enumerate(entries):
+        base = route.field_name
+        if bases[base] == 1:
+            continue
+        groups.setdefault(base, [])
+        candidates = []
+        if domain_path:
+            candidates.append("_".join(domain_path) + "_" + base)
+        candidates.append(
+            "_".join([base, route.method.lower(), *_path_segments(route.path)])
+        )
+        name = next((c for c in candidates if c not in used), None)
+        n = 2
+        while name is None:
+            candidate = f"{candidates[-1]}_{n}"
+            if candidate not in used:
+                name = candidate
+            n += 1
+        resolved[i] = _finalize(name, route)
+        groups[base].append(f"{route.method} {route.path} -> {name}")
+    names = [resolved[i] for i in range(len(entries))]
+    for base, members in groups.items():
+        logger.warning(
+            "tools mode: %d routes share the function name %r; tools "
+            "disambiguated — %s", len(members), base, "; ".join(members),
+        )
+    return names
+
+
 def register_route_tools(
     mcp: Any,
     handler: RouterGraphQLHandler,
@@ -369,7 +460,7 @@ def register_route_tools(
     schema and wrap the internal document. The group tree's depth is
     irrelevant by construction. Returns the number of tools registered."""
     schema: GraphQLSchema = handler.schema
-    count = 0
+    entries: list[tuple[Any, Any, tuple[str, ...]]] = []
     for route in handler.routes:
         root = schema.mutation_type if route.is_mutation else schema.query_type
         if root is None:  # pragma: no cover - the scanner gates mutations already
@@ -405,6 +496,10 @@ def register_route_tools(
                 ", ".join(repr(a) for a in bad),
             )
             continue
+        entries.append((route, field, domain_path))
+
+    names = _resolve_tool_names(entries)
+    for (route, field, domain_path), tool_name in zip(entries, names):
         _register_field_tool(
             mcp,
             handler,
@@ -412,6 +507,6 @@ def register_route_tools(
             field=field,
             field_name=route.field_name,
             is_mutation=route.is_mutation,
+            tool_name=tool_name,
         )
-        count += 1
-    return count
+    return len(entries)
