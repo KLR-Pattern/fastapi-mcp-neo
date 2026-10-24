@@ -20,6 +20,15 @@ mcp = FastAPIMCP(app, name="my-app")
 mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 ```
 
+**Three modes, one engine** — pick how agents talk to your app
+([full comparison](#modes)):
+
+| mode | what the agent does |
+|---|---|
+| `graphql` (default) | reads the schema once, then one query composes any routes — projection, aliases, one round trip |
+| `progressive` | the same queries, discovery in domain fragments — for large apps (constant ~1.5k-token catalog at any size) |
+| `tools` | one typed tool per route — plain arguments, no GraphQL to write; clients gate each tool individually |
+
 **Contents** — [Installation](#installation) · [Why](#why) ·
 [How it works](#how-it-works) · [Capability boundaries](#capability-boundaries) · [Usage](#usage) · [Agent lifecycle](#what-the-agent-sees-connection-lifecycle) · [Authentication](#authentication) ·
 [Observability](#observability-opentelemetry) · [Hardening](#hardening-the-bridge) ·
