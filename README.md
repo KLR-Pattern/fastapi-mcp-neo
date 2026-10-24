@@ -367,16 +367,42 @@ mcp.run()  # streamable HTTP, 127.0.0.1:8000 — mcp.run(host="0.0.0.0", port=90
 
 ### Modes
 
-| mode | toolset | agent experience | pick when |
-|---|---|---|---|
-| `graphql` (default) | `get_schema` + `graphql_query` (+ `graphql_mutation`) | learns the SDL once, then writes GraphQL documents — composition, projection and aliases in one round trip | the default; small-to-medium apps |
-| `progressive` | 5-layer domain walkthrough | discovery in fragments, same document execution | large apps (above ~25 routes) |
-| `tools` | one tool per route | calls typed per-route tools directly — no GraphQL literacy; a `fields` argument projects each response | per-tool client permissions (MCP gates tools individually), weaker models, fastapi_mcp migrants |
+Three shapes over one engine. Every mode executes through the **same
+GraphQL schema and the same in-process engine** — identical types,
+per-caller credentials, `Depends`/middleware, error semantics and
+projection results. The mode changes only the shape the agent
+interacts with:
 
-Nothing switches implicitly. `graphql` mode warns above `progressive_threshold`
-(default 25) suggesting progressive; `tools` mode warns above 50 routes
-(~250 tokens of catalog per route measured — prefer progressive or an
-include/exclude subset). `"simple"` is a deprecated alias for `graphql`.
+|  | `graphql` (default) | `progressive` | `tools` |
+|---|---|---|---|
+| toolset | 3 tools, constant | 7 tools, constant | one tool per route |
+| catalog cost | ~0.6–2.5k tok, flat | ~1.5k tok, flat | ~250 tok per route |
+| discovery | the whole SDL in one shot (`get_schema`) | domain fragments on demand | typed signatures inline in every tool |
+| invocation | the agent writes GraphQL documents | same documents | plain typed arguments — no GraphQL to write |
+| composition | one document combines any routes, one round trip | same | one route per call; clients compose via parallel tool calls |
+| field selection | selection set inside the document | same | a `fields` argument per tool |
+| GraphQL literacy | required | required | none |
+| client-side permissions | one gate covers everything | one gate | **per-tool gating** — allow `get_note`, block `delete_note` |
+
+The same task in the two shapes — "note 1's title, plus the total
+count":
+
+```text
+graphql / progressive                             tools
+──────────────────────────────────────           ──────────────────────────────────────
+get_schema                  (once)                get_note(note_id=1, fields="{ title }")
+graphql_query:                                    get_stats()          (parallel calls)
+  { notes { get_note(note_id: 1) { title }
+            get_stats { total } } }
+```
+
+Pick by shape, not capability: `graphql` for small-to-medium apps,
+`progressive` for large ones (it warns you above `progressive_threshold`,
+default 25), `tools` for per-tool client permissions, weaker models, or
+[fastapi_mcp migrants](#migrating-from-fastapi_mcp) (`tools` warns above
+50 routes — the linear catalog overtakes the constant modes there).
+Nothing switches implicitly. `"simple"` is a deprecated alias for
+`graphql`.
 
 ### What the agent sees (connection lifecycle)
 
