@@ -2,11 +2,13 @@
 with a typed soul.
 
 Every tool is a projection of the SAME GraphQL contract the constant
-catalog serves: arguments carry the field's typed signature (codegen'd so
-fastmcp derives a real JSON Schema), the output schema derives from the
-field's GraphQL type, annotations derive from the HTTP method (GET ->
-readOnlyHint, writes -> destructiveHint), and a ``fields`` argument gives
-per-tool projection (``{ id title }`` instead of whole payloads).
+catalog serves: the input schema derives from the field's GraphQL
+argument types (InputObjectType fields included — the GraphQL schema is
+the typing source, the codegen'd Python signature is only the execution
+vessel), the output schema derives from the field's GraphQL type,
+annotations derive from the HTTP method (GET -> readOnlyHint, writes ->
+destructiveHint), and a ``fields`` argument gives per-tool projection
+(``{ id title }`` instead of whole payloads).
 
 Why this exists when the constant catalog already won the context war:
 MCP's permission model is per-TOOL. Clients gate, approve and display
@@ -115,6 +117,43 @@ def _json_schema(
     return {}
 
 
+def _input_json_schema(
+    t: GraphQLType, depth: int = 0, seen: frozenset[str] = frozenset()
+) -> dict[str, Any]:
+    """GraphQL argument type -> JSON Schema for the tool's input.
+
+    The mirror of _json_schema on the input side: GraphQLInputObjectType
+    fields carry properties and requiredness, so body parameters stay
+    typed (the signature's dict is only the execution vessel)."""
+    if is_list_type(t):
+        return {"type": "array", "items": _input_json_schema(t.of_type, depth, seen)}
+    if is_non_null_type(t):
+        return _input_json_schema(t.of_type, depth, seen)
+    if isinstance(t, GraphQLEnumType):
+        return {"type": "string", "enum": list(t.values.keys())}
+    if isinstance(t, GraphQLScalarType):
+        if t.name == "JSON":
+            return {}
+        return {"type": _JSON_SCALARS.get(t.name, "string")}
+    if isinstance(t, GraphQLInputObjectType):
+        if depth >= _MAX_WALK_DEPTH or t.name in seen:
+            return {"type": "object"}
+        props: dict[str, Any] = {}
+        required: list[str] = []
+        for fname, f in t.fields.items():
+            props[fname] = _input_json_schema(f.type, depth + 1, seen | {t.name})
+            has_default = f.default_value is not None and f.default_value is not Undefined
+            if is_non_null_type(f.type) and not has_default:
+                required.append(fname)
+            elif has_default:
+                props[fname]["default"] = f.default_value
+        out: dict[str, Any] = {"type": "object", "properties": props}
+        if required:
+            out["required"] = required
+        return out
+    return {}
+
+
 def _register_field_tool(
     mcp: Any,
     handler: RouterGraphQLHandler,
@@ -146,17 +185,15 @@ def _register_field_tool(
         data = (result.get("data") or {}).get(domain, {}).get(field_name)
         return {"data": data}
 
-    # Signature codegen: typed args -> fastmcp derives a typed JSON Schema.
-    # NonNull args without a GraphQL default become required parameters;
-    # everything else optional (= None, filtered before execution).
+    # Signature codegen: the EXECUTION VESSEL only. Requiredness and
+    # nested input typing live in the explicit parameters schema below —
+    # the GraphQL schema is the typing source, not the Python signature
+    # (delegating to signature derivation would flatten InputObjectType
+    # args into untyped dicts).
     lines = [f"async def {field_name}("]
     for arg_name in arg_names:
-        arg = field.args[arg_name]
-        # no-default args carry Undefined, not None
-        has_default = arg.default_value is not None and arg.default_value is not Undefined
-        required = is_non_null_type(arg.type) and not has_default
-        ann = _py_annotation(arg.type, nullable=not required)
-        lines.append(f"    {arg_name}: {ann}," if required else f"    {arg_name}: {ann} = None,")
+        ann = _py_annotation(field.args[arg_name].type, nullable=True)
+        lines.append(f"    {arg_name}: {ann} = None,")
     lines.append("    fields: str | None = None,")
     lines.append(") -> dict:")
     body = "{" + ", ".join(f'"{a}": {a}' for a in arg_names) + "}"
@@ -196,6 +233,28 @@ def _register_field_tool(
         annotations=DESTRUCTIVE if is_mutation else READ_ONLY,
         output_schema=output_schema,
     )
+    # Override the signature-derived schema with one generated from the
+    # GraphQL argument types: InputObjectType args keep their field-level
+    # properties and requiredness; the `fields` projection arg rides along.
+    properties: dict[str, Any] = {
+        "fields": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": None,
+            "description": "GraphQL selection set to project the response, "
+            "e.g. `{ id title }` — omit for the full type.",
+        }
+    }
+    required_names: list[str] = []
+    for arg_name in arg_names:
+        arg = field.args[arg_name]
+        properties[arg_name] = _input_json_schema(arg.type)
+        has_default = arg.default_value is not None and arg.default_value is not Undefined
+        if is_non_null_type(arg.type) and not has_default:
+            required_names.append(arg_name)
+    input_schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if required_names:
+        input_schema["required"] = required_names
+    tool.parameters = input_schema
     mcp.add_tool(tool)
 
 
