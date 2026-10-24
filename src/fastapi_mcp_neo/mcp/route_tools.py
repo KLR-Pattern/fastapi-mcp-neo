@@ -44,6 +44,11 @@ from fastapi_mcp_neo.mcp.tools import DESTRUCTIVE, READ_ONLY, per_call_passthrou
 
 logger = logging.getLogger(__name__)
 
+# Signature default that means "the caller omitted this argument" —
+# distinct from an explicit null, which reaches the route as None (the
+# same distinction graphql mode makes between $x unset and $x: null).
+_UNSET: Any = object()
+
 # Selection/JSON-Schema walk caps: past this object depth and past one
 # repetition of a recursive type, nested object fields are omitted (a
 # default-selection convenience, not a contract — the agent can select
@@ -216,7 +221,9 @@ def _register_field_tool(
     async def run(payload: dict[str, Any], *, fields: str | None = None) -> dict[str, Any]:
         from fastmcp.exceptions import ToolError
 
-        variables = {k: v for k, v in payload.items() if v is not None}
+        # _UNSET = omitted (route default applies); an explicit null is a
+        # VALUE and travels to the route, exactly like graphql mode.
+        variables = {k: v for k, v in payload.items() if v is not _UNSET}
         missing = [
             a
             for a in arg_names
@@ -270,13 +277,13 @@ def _register_field_tool(
     lines = [f"async def {field_name}("]
     for arg_name in arg_names:
         ann = _py_annotation(field.args[arg_name].type, nullable=True)
-        lines.append(f"    {arg_name}: {ann} = None,")
+        lines.append(f"    {arg_name}: {ann} = _UNSET,")
     lines.append(f"    {proj_name}: str | None = None,")
     lines.append(") -> dict:")
     body = "{" + ", ".join(f'"{a}": {a}' for a in arg_names) + "}"
     lines.append(f"    return await run({body}, fields={proj_name})")
     src = textwrap.dedent("\n".join(lines))
-    ns: dict[str, Any] = {"Any": Any, "run": run}
+    ns: dict[str, Any] = {"Any": Any, "run": run, "_UNSET": _UNSET}
     exec(compile(src, f"<route-tools:{field_name}>", "exec"), ns)  # noqa: S102 - generated from the schema
     fn: Callable[..., Any] = ns[field_name]
 
@@ -306,16 +313,10 @@ def _register_field_tool(
         "properties": {"data": data_schema},
         "required": ["data"],
     }
-    tool = FunctionTool.from_function(
-        fn,
-        name=tool_name or field_name,
-        description=description,
-        annotations=DESTRUCTIVE if is_mutation else READ_ONLY,
-        output_schema=output_schema,
-    )
-    # Override the signature-derived schema with one generated from the
-    # GraphQL argument types: InputObjectType args keep their field-level
-    # properties and requiredness; the `fields` projection arg rides along.
+    # The GraphQL-derived input schema (InputObjectType args keep their
+    # field-level properties and requiredness; the projection arg rides
+    # along) — passed to DIRECT FunctionTool construction, so there is no
+    # signature derivation to discard afterwards.
     properties: dict[str, Any] = {
         proj_name: {
             "anyOf": [{"type": "string"}, {"type": "null"}],
@@ -341,11 +342,19 @@ def _register_field_tool(
         required_names.append(proj_name)
     if required_names:
         input_schema["required"] = required_names
-    # Override the signature-derived schema with the GraphQL-derived one.
+    # Direct construction with the explicit schemas: no from_function,
+    # no discarded per-route derivation, no private-field override.
     # (fastmcp's to_mcp_tool ALWAYS fills title via _default_title(name)
     # and meta via get_meta() on the wire — no None path; that ~9 tok/tool
     # is framework tax, not removable without fighting the converter.)
-    tool = tool.model_copy(update={"parameters": input_schema})
+    tool = FunctionTool(
+        fn=fn,
+        name=tool_name or field_name,
+        description=description,
+        parameters=input_schema,
+        annotations=DESTRUCTIVE if is_mutation else READ_ONLY,
+        output_schema=output_schema,
+    )
     mcp.add_tool(tool)
 
 
@@ -499,7 +508,7 @@ def register_route_tools(
         entries.append((route, field, domain_path))
 
     names = _resolve_tool_names(entries)
-    for (route, field, domain_path), tool_name in zip(entries, names):
+    for (route, field, domain_path), tool_name in zip(entries, names, strict=False):
         _register_field_tool(
             mcp,
             handler,

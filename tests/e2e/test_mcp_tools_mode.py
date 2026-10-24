@@ -598,3 +598,53 @@ class TestNameCollisions:
         assert all(len(n) <= 64 for n in names)
         assert len(set(names)) == 3
         assert "host bound" in caplog.text
+
+
+class TestNullVsOmitted:
+    """Review #8: tools mode filtered explicit nulls together with omitted
+    arguments BEFORE the engine could see them. The signature now defaults
+    to a sentinel, so nulls reach the engine — which defines the semantics
+    uniformly for every mode (verified against graphql mode):
+      query param null == omitted (invoker sends nothing; route default)
+      body field null  == a real null (travels into the route)"""
+
+    @pytest.fixture
+    def null_mcp(self):
+        from pydantic import BaseModel
+
+        class Echo(BaseModel):
+            kind: str | None
+
+        class Payload(BaseModel):
+            kind: str | None = "default"
+
+        app = FastAPI()
+
+        @app.get("/echo", tags=["null"])
+        async def echo(kind: str | None = "default") -> Echo:
+            return Echo(kind=kind)
+
+        @app.post("/echo-body", tags=["null"])
+        async def echo_body(payload: Payload) -> Echo:
+            return Echo(kind=payload.kind)
+
+        return FastAPIMCP(app, name="null", mode="tools")
+
+    async def test_omitted_query_gets_route_default(self, null_mcp):
+        async with Client(null_mcp.mcp) as client:
+            r = await client.call_tool("echo", {})
+        assert r.structured_content == {"data": {"kind": "default"}}
+
+    async def test_explicit_query_null_matches_graphql_mode(self, null_mcp):
+        """Engine semantics: a null query param is not sent (the invoker
+        drops it), exactly like graphql mode with $k: null."""
+        async with Client(null_mcp.mcp) as client:
+            r = await client.call_tool("echo", {"kind": None})
+        assert r.structured_content == {"data": {"kind": "default"}}
+
+    async def test_body_field_null_is_a_real_null(self, null_mcp):
+        async with Client(null_mcp.mcp) as client:
+            r = await client.call_tool(
+                "echo_body", {"payload": {"kind": None}}
+            )
+        assert r.structured_content == {"data": {"kind": None}}
