@@ -208,6 +208,11 @@ class FastAPIMCP:
                 stacklevel=3,
             )
             return "graphql"
+        if mode not in ("graphql", "progressive", "tools"):
+            raise GQLMCPConfigError(
+                f"unknown mode {mode!r}: expected 'graphql', 'progressive', "
+                "'tools' (or the deprecated alias 'simple')"
+            )
         return mode
 
     @property

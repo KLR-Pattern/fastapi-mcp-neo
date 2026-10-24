@@ -22,6 +22,9 @@
   `auto` is REMOVED — it was a policy, not a mode, and silently flipped
   the tool set at the 25-route boundary (staging vs prod could differ).
   Replaced by an advisory startup WARNING above `progressive_threshold`.
+  Passing `mode="auto"` (or any unknown value) now raises
+  `GQLMCPConfigError` at construction — no compatibility shim; drop the
+  parameter or pin a mode explicitly.
 - **`allow_mutation` now defaults to True.** The bridge mirrors the app
   ("nothing disappears"), the app's own auth gates writes per caller,
   and `graphql_mutation` carries `destructiveHint`. Pass

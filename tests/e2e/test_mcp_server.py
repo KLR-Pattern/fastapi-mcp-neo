@@ -10,6 +10,7 @@ from fastmcp import Client
 from pydantic import BaseModel
 
 from fastapi_mcp_neo import FastAPIMCP, RouterMCP
+from fastapi_mcp_neo.handler import GQLMCPConfigError
 from tests.support.apps import big_app, multi_domain_app, users_app
 from tests.support.mcp import tool_payload
 
@@ -18,6 +19,18 @@ class TestServerBehavior:
     async def test_default_mode_is_graphql(self):
         mcp = FastAPIMCP(users_app(), name="ro")
         assert mcp.resolved_mode == "graphql"
+
+    async def test_removed_auto_mode_raises_like_any_unknown(self):
+        """'auto' was removed vocabulary (0.15): it gets no compatibility
+        treatment — it fails like any unknown value, and the CHANGELOG is
+        the migration channel. Before this check it was silently accepted
+        as graphql behavior with no warning at all."""
+        with pytest.raises(GQLMCPConfigError, match="unknown mode 'auto'"):
+            FastAPIMCP(big_app(30), name="legacy", mode="auto")
+
+    async def test_unknown_mode_raises_listing_valid_values(self):
+        with pytest.raises(GQLMCPConfigError, match="'progressive'"):
+            FastAPIMCP(users_app(), name="typo", mode="progresive")
 
     async def test_graphql_mode_warns_above_threshold(self, caplog):
         """The mode never switches implicitly — big apps get a startup
