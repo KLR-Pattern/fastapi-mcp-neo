@@ -171,11 +171,24 @@ def _register_field_tool(
         from fastmcp.exceptions import ToolError
 
         variables = {k: v for k, v in payload.items() if v is not None}
+        missing = [
+            a
+            for a in arg_names
+            if a not in variables
+            and is_non_null_type(field.args[a].type)
+            and field.args[a].default_value in (None, Undefined)
+        ]
+        if missing:
+            raise ToolError(
+                f"missing required argument(s): {', '.join(missing)}"
+            )
         decls = ", ".join(f"${a}: {_sdl_type(field.args[a].type)}" for a in variables)
         args = ", ".join(f"{a}: ${a}" for a in variables)
         selection = (fields or "").strip() or _full_selection(field.type)
         op = "mutation" if is_mutation else "query"
-        document = f"{op}({decls}){{{domain}{{{field_name}({args}) {selection}}}}}"
+        header = f"{op}({decls})" if decls else op
+        field_call = f"{field_name}({args})" if args else field_name
+        document = f"{header}{{{domain}{{{field_call} {selection}}}}}"
         result = await handler.execute(document, variables=variables or None)
         errors = result.get("errors")
         if errors:
@@ -254,7 +267,11 @@ def _register_field_tool(
     input_schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required_names:
         input_schema["required"] = required_names
-    tool.parameters = input_schema
+    # Override the signature-derived schema with the GraphQL-derived one.
+    # (fastmcp's to_mcp_tool ALWAYS fills title via _default_title(name)
+    # and meta via get_meta() on the wire — no None path; that ~9 tok/tool
+    # is framework tax, not removable without fighting the converter.)
+    tool = tool.model_copy(update={"parameters": input_schema})
     mcp.add_tool(tool)
 
 
