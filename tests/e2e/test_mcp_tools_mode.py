@@ -648,3 +648,28 @@ class TestNullVsOmitted:
                 "echo_body", {"payload": {"kind": None}}
             )
         assert r.structured_content == {"data": {"kind": None}}
+
+
+class TestProjectionNudge:
+    """Agents omit optional parameters whose benefit is not stated, so
+    tools mode ships default instructions naming `fields`, and the
+    parameter description leads with the benefit."""
+
+    async def test_default_instructions_mention_fields(self, mcp):
+        assert mcp.mcp.instructions and "`fields`" in mcp.mcp.instructions
+
+    async def test_user_instructions_win(self):
+        mcp = FastAPIMCP(
+            users_app(), name="custom", mode="tools", instructions="mine"
+        )
+        assert mcp.mcp.instructions == "mine"
+
+    async def test_other_modes_get_no_default_instructions(self):
+        mcp = FastAPIMCP(users_app(), name="gql", mode="graphql")
+        assert mcp.mcp.instructions is None
+
+    async def test_fields_description_leads_with_benefit(self, mcp):
+        async with Client(mcp.mcp) as client:
+            t = {x.name: x for x in await client.list_tools()}["get_user"]
+        desc = t.inputSchema["properties"]["fields"]["description"]
+        assert desc.startswith("Pass to fetch only these fields")

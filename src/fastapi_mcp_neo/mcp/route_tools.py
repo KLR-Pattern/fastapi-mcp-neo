@@ -298,8 +298,9 @@ def _register_field_tool(
     parts = [description] if description else []
     parts.append(f"GraphQL: `{signature}`")
     parts.append(
-        f"`{proj_name}` (optional): a GraphQL selection set to project "
-        "the response, e.g. `{ id title }` — omit for the full type."
+        f"`{proj_name}` (optional): pass `{ '{ id title }' }`-style "
+        "selection to fetch only those fields — smaller responses. "
+        "Omit for the full type."
     )
     description = "\n\n".join(parts)
 
@@ -321,8 +322,9 @@ def _register_field_tool(
         proj_name: {
             "anyOf": [{"type": "string"}, {"type": "null"}],
             "default": None,
-            "description": "GraphQL selection set to project the response, "
-            "e.g. `{ id title }` — omit for the full type.",
+            "description": "Pass to fetch only these fields — e.g. "
+            "`{ id title }` or nested `{ title author { name } }`; the "
+            "response shrinks to the selection. Omit for the full type.",
         }
     }
     required_names: list[str] = []

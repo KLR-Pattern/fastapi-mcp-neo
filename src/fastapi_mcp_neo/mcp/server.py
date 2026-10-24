@@ -23,6 +23,18 @@ logger = logging.getLogger(__name__)
 PROGRESSIVE_THRESHOLD = 25
 TOOLS_THRESHOLD = 50
 
+# Default initialize-time guidance for tools mode (user-supplied
+# instructions win): measured agent behavior is to omit optional
+# parameters whose benefit is not stated, so projection gets a nudge at
+# the one moment every agent reads.
+_TOOLS_DEFAULT_INSTRUCTIONS = (
+    "Each tool wraps one route of the app and returns JSON. Every tool "
+    "also takes an optional `fields` argument: a GraphQL selection set "
+    "such as `{ id title }`, nested like `{ title author { name } }`. "
+    "Pass it to receive only the fields you need — responses (and your "
+    "context usage) shrink accordingly. Omit it for the full payload."
+)
+
 
 def _compose_lifespan(host: FastAPI, sub_http_app: Any) -> None:
     """Chain a mounted sub-app's lifespan into the host app's lifespan.
@@ -232,6 +244,8 @@ class FastAPIMCP:
         # fastmcp is an optional extra; import lazily like nexusx does.
         from fastmcp import FastMCP
 
+        if self._resolved_mode == "tools" and instructions is None:
+            instructions = _TOOLS_DEFAULT_INSTRUCTIONS
         mcp = FastMCP(name, auth=auth, instructions=instructions)
         if self._resolved_mode == "tools":
             from fastapi_mcp_neo.mcp.route_tools import register_route_tools
