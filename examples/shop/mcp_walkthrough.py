@@ -33,7 +33,7 @@ async def main() -> None:
         name="fastapi-mcp-neo demo",
         allow_mutation=True,
         # 13 routes < threshold, so force progressive to show the 4 layers;
-        # "auto" would pick simple mode (get_schema + graphql_query).
+        # graphql mode registers get_schema + graphql_query.
         mode="progressive",
         # The caller brings the demo token itself (single identity source):
         passthrough_headers=["x-token", "authorization"],

@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`mode="tools"`: one standalone-GraphQL-entry tool per route.** Typed
+  args map 1:1 to the operation's variables, `fields` projects the
+  response (GraphQL selection set), output_schema derives from the
+  field's GraphQL type, annotations derive from the HTTP method
+  (GET -> readOnlyHint, writes -> destructiveHint). For per-tool client
+  permissions (MCP gates per tool) and fastapi_mcp migrants; warns above
+  50 routes (~250 tok/route measured — use progressive or an
+  include/exclude subset there). No executor tools in this mode: the
+  tool is the granularity, clients compose via parallel tool calls;
+  composition queries belong to graphql/progressive mode.
+
+### Changed (breaking)
+
+- **`mode` enum redesigned: `graphql` | `progressive` | `tools`, default
+  `graphql`.** `simple` is a deprecated alias (DeprecationWarning);
+  `auto` is REMOVED — it was a policy, not a mode, and silently flipped
+  the tool set at the 25-route boundary (staging vs prod could differ).
+  Replaced by an advisory startup WARNING above `progressive_threshold`.
+  Passing `mode="auto"` (or any unknown value) now raises
+  `GQLMCPConfigError` at construction — no compatibility shim; drop the
+  parameter or pin a mode explicitly.
+- **`allow_mutation` now defaults to True.** The bridge mirrors the app
+  ("nothing disappears"), the app's own auth gates writes per caller,
+  and `graphql_mutation` carries `destructiveHint`. Pass
+  `allow_mutation=False` for a read-only view — previously the default.
+
 ## 0.14.0 (2026-10-22)
 
 ### Fixed

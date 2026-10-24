@@ -81,10 +81,10 @@ def register_executor_tools(
             return await _execute(handler, mutation, variables, mutation=True)
 
 
-def register_simple_tools(
+def register_graphql_tools(
     mcp: FastMCP, handler: RouterGraphQLHandler, *, allow_mutation: bool
 ) -> None:
-    """Register get_schema + executor tools (small apps, one-shot discovery)."""
+    """Register get_schema + executor tools — graphql mode, one-shot SDL discovery."""
 
     @mcp.tool(annotations=READ_ONLY)
     def get_schema() -> dict[str, Any]:
@@ -128,7 +128,7 @@ def _document_matches(document: str, *, mutation: bool) -> bool:
     return all(op == expected for op in operations)
 
 
-def _per_call_passthrough_headers(allowed: tuple[str, ...]) -> dict[str, Any]:
+def per_call_passthrough_headers(allowed: tuple[str, ...]) -> dict[str, Any]:
     """Whitelisted headers off the MCP caller's own HTTP request, if any.
 
     fastmcp's accessor never raises: with no live HTTP request (in-memory
@@ -162,7 +162,7 @@ async def _execute(
             hint="Send the document to the matching tool.",
         )
     try:
-        per_call = _per_call_passthrough_headers(handler.passthrough_headers)
+        per_call = per_call_passthrough_headers(handler.passthrough_headers)
         result = await handler.execute(document, variables=variables, headers=per_call)
     except Exception as e:  # pragma: no cover - defensive
         return create_error_response(str(e), GQLMCPErrors.INTERNAL_ERROR)

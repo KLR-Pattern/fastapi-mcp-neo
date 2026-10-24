@@ -19,7 +19,7 @@ mcp = FastAPIMCP(
     app,
     name="fastapi-mcp-neo demo",
     allow_mutation=True,
-    # The demo app stays under the 25-route threshold, so "auto" would pick
+    # The demo app stays under the 25-route threshold, so graphql mode (the
     # simple mode (get_schema + graphql_query). Force progressive to
     # expose the tag-based disclosure tools:
     # list_domains -> list_queries/list_mutations -> get_query_schema -> graphql_query

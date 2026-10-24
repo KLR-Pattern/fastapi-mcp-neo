@@ -11,12 +11,17 @@ from fastapi import FastAPI
 
 from fastapi_mcp_neo.domains import DomainRegistry
 from fastapi_mcp_neo.handler import GQLMCPConfigError, RouterGraphQLHandler
-from fastapi_mcp_neo.mcp.tools import register_simple_tools
+from fastapi_mcp_neo.mcp.tools import register_graphql_tools
 
 logger = logging.getLogger(__name__)
 
-# Route count above which "auto" mode prefers progressive disclosure (P2).
+# Route counts above which graphql/tools modes get startup warnings
+# advising progressive disclosure — advisory only, never a silent mode
+# switch: behavior must stay deterministic across environments. tools
+# starts later on the curve: ~250 tok/route measured puts 50 routes at
+# the catalog size where the constant-catalog modes take over.
 PROGRESSIVE_THRESHOLD = 25
+TOOLS_THRESHOLD = 50
 
 
 def _compose_lifespan(host: FastAPI, sub_http_app: Any) -> None:
@@ -59,7 +64,11 @@ class FastAPIMCP:
             untagged routes stay. Tag filters AND with path filters (a
             route must pass both); dropping is silent, like path filters.
         allow_mutation: Expose POST/PUT/PATCH/DELETE routes as GraphQL
-            mutations. Default False (read-only).
+            mutations. Default True — the bridge mirrors the app (a route
+            that works over HTTP stays callable here), and the app's own
+            auth gates writes per caller; the mutation tool carries
+            destructiveHint so clients confirm writes. Pass False for a
+            read-only view.
         mutation_include: fnmatch globs limiting WHICH write routes become
             mutations (requires allow_mutation=True).
         passthrough_headers: Whitelist of inbound header names (case
@@ -102,12 +111,16 @@ class FastAPIMCP:
             ``fastmcp.server.auth.auth.TokenVerifier`` subclass (override
             ``verify_token``) gates the endpoint the same way, without the
             OAuth machinery.
-        mode: ``simple`` registers get_schema + graphql_query;
+        mode: ``graphql`` registers get_schema + graphql_query — one-shot
+            SDL discovery, the agent writes GraphQL documents;
             ``progressive`` registers the 4-layer tag-based disclosure
             (list_domains -> list_queries -> get_query_schema ->
-            graphql_query); ``auto`` picks progressive once the schema
-            carries more than ``progressive_threshold`` routes (counted
-            after path and tag filtering).
+            graphql_query) for larger schemas; ``tools`` registers one
+            standalone-GraphQL-entry tool per route (typed args, ``fields``
+            projection, method-derived annotations — per-tool client
+            permissions; warns above 50 routes, where the linear catalog
+            overtakes the constant-catalog modes). ``"simple"`` is a
+            deprecated alias for ``graphql``.
         include_hidden: Also scan routes with ``include_in_schema=False``.
         exclude_deprecated: Drop routes declared ``deprecated=True`` — a
             config-level silent drop, like the path/tag filters. Routes
@@ -124,8 +137,8 @@ class FastAPIMCP:
         exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
-        allow_mutation: bool = False,
-        mode: Literal["auto", "simple", "progressive"] = "auto",
+        allow_mutation: bool = True,
+        mode: Literal["graphql", "progressive", "tools", "simple"] = "graphql",
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
         progressive_threshold: int = PROGRESSIVE_THRESHOLD,
@@ -157,37 +170,56 @@ class FastAPIMCP:
             document_cache_size=document_cache_size,
         )
         self._resolved_mode = self._resolve_mode(mode)
+        route_count = len(self._handler.routes)
+        if (
+            self._resolved_mode == "graphql"
+            and route_count > self._progressive_threshold
+        ):
+            logger.warning(
+                "Schema carries %d routes (> %d): graphql mode hands the whole "
+                "SDL to the agent in one shot. Consider mode='progressive' "
+                "(layered discovery, constant per-session cost) or mode='tools' "
+                "with an include filter (per-tool permissions).",
+                route_count,
+                self._progressive_threshold,
+            )
+        if self._resolved_mode == "tools" and route_count > TOOLS_THRESHOLD:
+            logger.warning(
+                "Schema carries %d routes (> %d): tools mode registers one "
+                "tool per route, so the catalog grows linearly (~250 tokens "
+                "per route measured). Consider mode='progressive' (constant "
+                "per-session cost) or narrowing with include/exclude to a "
+                "curated subset — per-tool permissions work best on small, "
+                "deliberate selections.",
+                route_count,
+                TOOLS_THRESHOLD,
+            )
         self._domains = DomainRegistry(self._handler.routes)
         self._mcp = self._build_mcp(name, allow_mutation, auth, instructions)
 
     def _resolve_mode(
-        self, mode: Literal["auto", "simple", "progressive"]
-    ) -> Literal["simple", "progressive"]:
+        self,
+        mode: Literal["graphql", "progressive", "tools", "simple"],
+    ) -> Literal["graphql", "progressive", "tools"]:
         if mode == "simple":
-            return "simple"
-        if mode == "progressive":
-            return "progressive"
-        # auto: progressive disclosure pays off once the SDL is too big to
-        # hand an agent in one shot. Count the routes that ENTER the schema
-        # (include/exclude applied, include_router wrappers resolved by the
-        # scanner) — raw app.routes undercounts on FastAPI >= 0.142, where
-        # include_router results are wrapped in non-APIRoute objects, and
-        # overcounts when include/exclude narrows the schema.
-        route_count = len(self._handler.routes)
-        if route_count > self._progressive_threshold:
-            logger.info(
-                "Schema carries %d routes (> %d): using progressive disclosure",
-                route_count,
-                self._progressive_threshold,
+            warnings.warn(
+                'mode="simple" is deprecated; use mode="graphql" (same behavior).',
+                DeprecationWarning,
+                stacklevel=3,
             )
-            return "progressive"
-        return "simple"
+            return "graphql"
+        if mode not in ("graphql", "progressive", "tools"):
+            raise GQLMCPConfigError(
+                f"unknown mode {mode!r}: expected 'graphql', 'progressive', "
+                "'tools' (or the deprecated alias 'simple')"
+            )
+        return mode
 
     @property
-    def resolved_mode(self) -> Literal["simple", "progressive"]:
-        """The mode actually in effect — ``auto`` is already resolved here,
-        so this never returns ``auto`` (unlike the ``mode`` constructor
-        argument, which records what was requested)."""
+    def resolved_mode(self) -> Literal["graphql", "progressive", "tools"]:
+        """The mode actually in effect — ``"simple"`` (deprecated alias) is
+        already resolved to ``"graphql"`` here, so this never returns it
+        (unlike the ``mode`` constructor argument)."""
         return self._resolved_mode
 
     def _build_mcp(
@@ -201,14 +233,20 @@ class FastAPIMCP:
         from fastmcp import FastMCP
 
         mcp = FastMCP(name, auth=auth, instructions=instructions)
-        if self._resolved_mode == "progressive":
+        if self._resolved_mode == "tools":
+            from fastapi_mcp_neo.mcp.route_tools import register_route_tools
+
+            register_route_tools(
+                mcp, self._handler, allow_mutation=allow_mutation
+            )
+        elif self._resolved_mode == "progressive":
             from fastapi_mcp_neo.mcp.progressive_tools import register_progressive_tools
 
             register_progressive_tools(
                 mcp, self._handler, self._domains, allow_mutation=allow_mutation
             )
         else:
-            register_simple_tools(mcp, self._handler, allow_mutation=allow_mutation)
+            register_graphql_tools(mcp, self._handler, allow_mutation=allow_mutation)
         return mcp
 
     @property

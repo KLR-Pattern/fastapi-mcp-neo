@@ -49,15 +49,18 @@ class TestDiscovery:
 
 
 class TestMutationGating:
-    def test_mutations_skipped_by_default(self):
+    def test_mutations_included_by_default(self):
+        """0.15.0: the scanner mirrors the app — writes scan in by default
+        (handler/FastAPIMCP flipped first; the audit layer follows)."""
         routes, skips = scan(scanner_app())
-        assert all(not r.is_mutation for r in routes)
-        assert any("/items" in s.path and s.method == "POST" for s in skips)
-
-    def test_mutations_included_when_allowed(self):
-        routes, skips = scan(scanner_app(), allow_mutation=True)
         assert by_field(routes, "create_item").is_mutation
         assert by_field(routes, "patch_item").method == "PATCH"
+        assert not any("/items" in s.path and s.method == "POST" for s in skips)
+
+    def test_mutations_skipped_when_disabled(self):
+        routes, skips = scan(scanner_app(), allow_mutation=False)
+        assert all(not r.is_mutation for r in routes)
+        assert any("/items" in s.path and s.method == "POST" for s in skips)
 
 
 class TestFiltering:
@@ -550,7 +553,7 @@ class TestReadiness:
         assert by_path["/untyped"].tags == ("iam:misc",)
         assert by_path["/filtered"].tags == ("iam:billing",)
 
-        report = RouterScanner(build_tagged_app()).readiness()
+        report = RouterScanner(build_tagged_app(), allow_mutation=False).readiness()
         rec = next(s for s in report.skips if s.path == "/users")  # POST
         assert rec.tags == ("iam:users",)
 

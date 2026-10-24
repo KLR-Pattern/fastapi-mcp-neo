@@ -38,6 +38,9 @@ WHAT ONE-TOOL-PER-ENDPOINT BRIDGES GET WRONG AT SCALE
   bytes), and one failing endpoint kills the healthy results with it.
 - Writes ungated, credentials borrowed. Everything writable by default;
   a server-side token means the agent stops acting as the user.
+  (Writability itself isn't the sin — a server-side identity running
+  those writes is. Writes here ride the caller's own credentials, and
+  the mutation tool carries destructiveHint so clients confirm.)
 
 Fair note: below ~10 endpoints, this design is actually cheaper. The
 failure is at scale — where real services live.

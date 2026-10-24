@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as dt_time
 from decimal import Decimal
+from enum import Enum
 from typing import Any
 from urllib.parse import quote
 from uuid import UUID
@@ -201,6 +202,11 @@ def _json_safe(value: Any) -> Any:
 def _render_param(value: Any) -> Any:
     if value is None:
         return None
+    if isinstance(value, Enum):
+        # str(Color.red) is "Color.red" — routes expect the VALUE; this is
+        # the default-value path (scanner keeps the Python default object,
+        # GraphQL arg defaults were normalized but the invoker reads RouteInfo)
+        return value.value
     if isinstance(value, list):
         # Mixed lists drop their None items rather than stringifying them
         # ("None" as a query value is never what the caller meant); an

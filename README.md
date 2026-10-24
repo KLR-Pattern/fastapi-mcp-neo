@@ -17,7 +17,7 @@ app = FastAPI()
 # ... your existing routes ...
 
 mcp = FastAPIMCP(app, name="my-app")
-mcp.run()  # HTTP MCP server with get_schema + graphql_query tools
+mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 ```
 
 **Contents** — [Installation](#installation) · [Why](#why) ·
@@ -41,7 +41,7 @@ composition, whole-payload responses. fastapi-mcp-neo instead derives a **GraphQ
 schema** from your routes (Apollo's "GraphQL as the MCP contract" pattern), so
 agents get:
 
-- **a constant tool set** (2 in simple mode, up to 6 with progressive
+- **a constant tool set** (3 in graphql mode, up to 7 with progressive
   disclosure) — never one tool per endpoint; discovery tools and
   `graphql_query` carry the `readOnlyHint` MCP annotation,
   `graphql_mutation` the `destructiveHint`, so agents can auto-run reads
@@ -159,9 +159,11 @@ The shape follows two rules:
 <details>
 <summary><b>Rules worth knowing</b> — mutation gating &amp; ordering, recursive true-depth, the unroll limit, route filters, tag semantics</summary>
 
-- **Mutations are off by default** (`allow_mutation=True` to expose writes;
-  `mutation_include=[...]` globs to whitelist specific write routes);
-  `graphql_query` also refuses mutation documents.
+- **Writes are exposed by default** — the bridge mirrors the app, and the
+  app's own auth gates them per caller (`allow_mutation=False` for a
+  read-only view; `mutation_include=[...]` globs to whitelist specific
+  write routes). `graphql_mutation` carries `destructiveHint`, so clients
+  confirm writes; `graphql_query` refuses mutation documents.
 - **Mutation ordering**: per the GraphQL spec, mutation fields at the ROOT
   execute serially in declaration order — with the grouped schema that means
   writes in DIFFERENT domains are ordered; writes grouped under the SAME
@@ -284,7 +286,7 @@ exposes them (`path`, `method`, `reason`) for CI assertions, and
 | `Form()` / `File()` body | MCP tool arguments are JSON; the protocol has no file channel yet (SEP-2631 draft). The route stays available over plain HTTP |
 | required header/cookie parameter | headers are not GraphQL arguments — make it optional; caller credentials ride `passthrough_headers` |
 | query-parameter model mixed with plain params | FastAPI itself cannot serve that shape on the wire; move the plain params into the model |
-| write verbs with `allow_mutation=False` (the default) | opt in with `allow_mutation=True` or `mutation_include` |
+| write verbs, when you pass `allow_mutation=False` (read-only view) | writes are exposed by default; narrow them with `mutation_include` or hide with `allow_mutation=False` |
 | hidden route (`include_in_schema=False`) | opt in with `include_hidden=True` |
 | returns a raw `Response` (streaming, plain text) | no typed body to expose |
 | response/parameter annotation with no mapping at all (`-> bytes`, a bare custom class, mixed-type `Literal`) | no per-field shape exists to degrade to — annotate with a JSON-compatible type |
@@ -354,7 +356,6 @@ context). Use `mount_to(app, "/mcp")` to serve MCP on the app's own port.
 mcp = FastAPIMCP(
     app,
     name="my-app",
-    allow_mutation=False,
     include=["/api/*"],
     include_tags=["iam:*"],  # keep only routes tagged iam:… (untagged drop)
     # The caller's own Authorization header travels to the routes by default;
@@ -363,6 +364,65 @@ mcp = FastAPIMCP(
 )
 mcp.run()  # streamable HTTP, 127.0.0.1:8000 — mcp.run(host="0.0.0.0", port=9000)
 ```
+
+### Modes
+
+Three shapes over one engine. Every mode executes through the **same
+GraphQL schema and the same in-process engine** — identical types,
+per-caller credentials, `Depends`/middleware, error semantics and
+projection results. The mode changes only the shape the agent
+interacts with:
+
+|  | `graphql` (default) | `progressive` | `tools` |
+|---|---|---|---|
+| toolset | 3 tools, constant | 7 tools, constant | one tool per route |
+| catalog cost | ~0.6–2.5k tok, flat | ~1.5k tok, flat | ~250 tok per route |
+| discovery | the whole SDL in one shot (`get_schema`) | domain fragments on demand | typed signatures inline in every tool |
+| invocation | the agent writes GraphQL documents | same documents | plain typed arguments — no GraphQL to write |
+| composition | one document combines any routes, one round trip | same | one route per call; clients compose via parallel tool calls |
+| field selection | selection set inside the document | same | a `fields` argument per tool |
+| GraphQL literacy | required | required | none |
+| client-side permissions | one gate covers everything | one gate | **per-tool gating** — allow `get_note`, block `delete_note` |
+
+The same task in the two shapes — "note 1's title, plus the total
+count":
+
+```text
+graphql / progressive                             tools
+──────────────────────────────────────           ──────────────────────────────────────
+get_schema                  (once)                get_note(note_id=1, fields="{ title }")
+graphql_query:                                    get_stats()          (parallel calls)
+  { notes { get_note(note_id: 1) { title }
+            get_stats { total } } }
+```
+
+**Pick by how you control access** — that is the real axis:
+
+- **`tools` — control by operation.** The client approves and gates each
+  tool individually: hand a third-party agent a curated subset
+  (`include`/`exclude`), allow `get_note` while blocking `delete_note`
+  at the approval layer. Also the fit for weaker models (no GraphQL to
+  write) and [fastapi_mcp migrants](#migrating-from-fastapi_mcp).
+- **`graphql` — control by kind, and you trust the agent.** One boundary
+  between reads and writes: `graphql_query` auto-runs (`readOnlyHint`),
+  `graphql_mutation` asks for confirmation (`destructiveHint`);
+  `allow_mutation=False` gives analysts a pure read-only deployment and
+  `mutation_include` narrows which writes exist at all. Best for
+  composition-heavy internal work — one round trip across many routes.
+- **`progressive` — `graphql`'s contract for apps too big to hand over
+  in one shot.** The agent learns one domain at a time
+  (`list_domains` → fragments); the catalog stays ~1.5k tokens whether
+  the API has 30 routes or 300.
+
+Typical pairings: an internal agent gets `graphql` (read/write split by
+tool annotations), the analytics dashboard gets a read-only deployment
+(`graphql` + `allow_mutation=False`), the external partner agent gets
+`tools` on a ten-route curated subset.
+
+Nothing switches implicitly: `graphql` warns above
+`progressive_threshold` (default 25), `tools` warns above 50 routes (the
+linear catalog overtakes the constant modes there). `"simple"` is a
+deprecated alias for `graphql`.
 
 ### What the agent sees (connection lifecycle)
 
@@ -384,7 +444,7 @@ to the endpoint, this is what happens — and what it costs in context:
    graphql_query — one call composes any routes: fields from different
    domains, aliases, field projection. A failing route nulls only its
    own field; siblings survive.
-   graphql_mutation — writes (if allow_mutation=True)
+   graphql_mutation — writes (exposed by default; destructiveHint asks clients to confirm)
 
 ④ Credentials (if auth= is configured)
    First connect → OAuth 2.1 login (browser opens, user authorizes)
@@ -434,9 +494,9 @@ mcp = FastAPIMCP(
 
 ### Progressive disclosure (large apps)
 
-Above `progressive_threshold` routes (default 25, `mode="auto"`, counted
-after path and tag filtering), the toolset switches to a 5-layer walkthrough
-of the tag tree:
+With `mode="progressive"` (graphql mode warns and suggests it above
+`progressive_threshold` routes — default 25, counted after path and tag
+filtering), the toolset is a 5-layer walkthrough of the tag tree:
 
 ```
 list_domains ──▶ list_queries("billing:invoice") ──▶ get_query_schema("billing:invoice") ──▶ graphql_query
@@ -448,7 +508,7 @@ Each domain SDL fragment re-wraps the real group types along the path, so it
 shows **exactly the grouped query the agent must write** — nothing more, and
 with every description attached. **Discovery is scoped; execution is not**:
 `graphql_query` always runs against the full schema, so fields from different
-domains combine freely. Force either mode with `mode="simple" | "progressive"`.
+domains combine freely. All three modes: `mode="graphql" | "progressive" | "tools"`.
 
 ### Mounted into the same app
 
@@ -490,6 +550,34 @@ iam.mount_to(app, "/mcp-iam")        # streamable HTTP at /mcp-iam/
 billing.mount_to(app, "/mcp-billing")
 ```
 </details>
+
+### Migrating from fastapi_mcp
+
+[fastapi-mcp](https://github.com/tadata-org/fastapi_mcp) has been dormant
+since August 2025 (last release v0.4.0, 2025-07; incompatible with the
+current MCP spec). Migration here is usually two lines — the bridge
+derives everything from your existing app — and `mode="tools"` gives you
+the same one-tool-per-route shape with a typed soul:
+
+| fastapi_mcp | here |
+|---|---|
+| `FastApiMCP(app)` | `FastAPIMCP(app, mode="tools")` |
+| `include_operations=["get_note"]` | `include=["/notes/{note_id}"]` (path globs) or `include_tags=[...]` |
+| `mcp.mount()` (lifespan never fires [#256](https://github.com/tadata-org/fastapi_mcp/issues/256); requests hang [#259](https://github.com/tadata-org/fastapi_mcp/issues/259)) | `mount_to(app, "/mcp")` — lifespan chained, e2e-tested |
+| `AuthConfig` | `auth=` (TokenVerifier gate / OAuth provider) + `passthrough_headers` — each caller acts as themselves |
+| tool names from `operation_id` (`list_notes_notes_get`) | tool names from function names (`list_notes`) |
+| whole-payload responses, no output types | `fields` projection (`{ id title }`) + typed `output_schema` |
+| every tool shows as "write" (no annotations [#252](https://github.com/tadata-org/fastapi_mcp/issues/252)) | readOnlyHint / destructiveHint derived from the HTTP method |
+
+Issues from that repo that cannot happen here, by construction: cyclic
+`$ref` RecursionError ([#287](https://github.com/tadata-org/fastapi_mcp/issues/287)
+— no spec parsing), path-parameter URL encoding
+([#354](https://github.com/tadata-org/fastapi_mcp/issues/354) — in-process
+dispatch, percent-encoded assembly), OpenAPI dialect fields breaking
+strict clients ([#218](https://github.com/tadata-org/fastapi_mcp/issues/218)
+— schemas derive from GraphQL types), mcp 2.x SDK incompatibility
+([#321](https://github.com/tadata-org/fastapi_mcp/issues/321) — rides
+fastmcp 4.x on the current spec).
 
 ### Plain GraphQL (no MCP)
 
