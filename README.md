@@ -438,6 +438,30 @@ Nothing switches implicitly: `graphql` warns above
 `progressive_threshold` (default 25), `tools` warns above 50 routes (the
 linear catalog overtakes the constant modes there).
 
+### Read/write classification (`@mcp_query` / `@mcp_mutation`)
+
+The bridge classifies routes by HTTP verb: GET reads, writes get
+`destructiveHint`. Two real-world shapes break that default, and the
+route's author knows the truth — so say it on the route:
+
+```python
+from fastapi_mcp_neo import mcp_mutation, mcp_query
+
+@app.post("/search")          # POST-for-read: payload bodies beat
+@mcp_query                    # query strings — but it IS a read
+async def search(q: SearchQuery) -> Hits: ...
+
+@app.get("/admin/flush")      # GET-with-side-effects — it IS a write
+@mcp_mutation
+async def flush() -> Ok: ...
+```
+
+The marker sits BELOW the route decorator and flips the classification at
+scan time, so every consumer aligns: schema placement (Query/Mutation
+root), tools-mode annotations, and the `allow_mutation` gate (a
+read-only deployment keeps `@mcp_query` POSTs). The physical verb is
+untouched — the route still executes via POST/GET on the wire.
+
 ### What the agent sees (connection lifecycle)
 
 When an MCP client (Claude Code, Cursor, any MCP-capable agent) connects

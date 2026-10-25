@@ -2,6 +2,16 @@
 
 ## 0.16.0 (2026-10-25)
 
+### Added
+
+- **`@mcp_query` / `@mcp_mutation`: force a route's read/write
+  classification.** The verb default breaks on POST-for-read APIs
+  (payload bodies beat query strings) and GET-with-side-effects routes;
+  the marker (sitting below the route decorator) flips the classification
+  at scan time — schema placement, tools-mode annotations, and the
+  allow_mutation gate all align, while the physical HTTP verb on the wire
+  is untouched.
+
 ### Removed (breaking)
 
 - **Path-glob route filters: `include` / `exclude` / `mutation_include`.**

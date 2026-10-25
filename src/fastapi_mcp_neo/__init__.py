@@ -5,6 +5,7 @@ from importlib.metadata import version as _pkg_version
 
 from fastapi_mcp_neo.handler import GQLMCPConfigError, RouterGraphQLHandler
 from fastapi_mcp_neo.invoker import RouteInvoker, filter_passthrough_headers
+from fastapi_mcp_neo.markers import mcp_mutation, mcp_query
 from fastapi_mcp_neo.mcp.errors import GQLMCPErrors
 from fastapi_mcp_neo.mcp.server import FastAPIMCP
 from fastapi_mcp_neo.scanner import (
@@ -25,6 +26,8 @@ except PackageNotFoundError:  # pragma: no cover - source tree without install
 
 __all__ = [
     "FastAPIMCP",
+    "mcp_query",
+    "mcp_mutation",
     "DegradedRecord",
     "ReadinessReport",
     "RouteInfo",

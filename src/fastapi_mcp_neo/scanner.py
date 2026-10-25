@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from fastapi_mcp_neo.domains import domains_for
+from fastapi_mcp_neo.markers import read_force
 from fastapi_mcp_neo.naming import field_name_for
 from fastapi_mcp_neo.type_builder import (
     TypeBuilder,
@@ -141,6 +142,9 @@ class RouteInfo:
     deprecated: bool = False
     response_filter: str | None = None  # kwarg that unshapes the response JSON
     domains: frozenset[tuple[str, ...]] = frozenset()
+    # @mcp_query / @mcp_mutation override: the route's read/write truth as
+    # its author declared it ("query" | "mutation" | None = verb default).
+    force: str | None = None
     # Output classification computed once at scan time (_classify_output):
     # the single source the startup notice, ReadinessReport, and the SDL
     # field note all read.
@@ -148,6 +152,10 @@ class RouteInfo:
 
     @property
     def is_mutation(self) -> bool:
+        if self.force == "query":
+            return False
+        if self.force == "mutation":
+            return True
         return self.method in _MUTATION_VERBS
 
 
@@ -675,7 +683,11 @@ class RouterScanner:
             if self._exclude_deprecated and getattr(r, "deprecated", False):
                 continue
 
-            if method in _MUTATION_VERBS and not self._allow_mutation:
+            force = read_force(getattr(r, "endpoint", None))
+            effective_mutation = (
+                force == "mutation" if force else method in _MUTATION_VERBS
+            )
+            if effective_mutation and not self._allow_mutation:
                 skips.append(
                     SkipRecord(r.path, method, "mutation endpoints are disabled "
                               "(pass allow_mutation=True to expose them)",
@@ -694,7 +706,7 @@ class RouterScanner:
                 )
                 continue
 
-            route_info = self._build_route_info(r, method, types, skips)
+            route_info = self._build_route_info(r, method, types, skips, force)
             if route_info is not None:
                 routes.append(route_info)
 
@@ -746,6 +758,7 @@ class RouterScanner:
         method: str,
         types: TypeBuilder,
         skips: list[SkipRecord],
+        force: str | None = None,
     ) -> RouteInfo | None:
         str_tags = tuple(t for t in route.tags or () if isinstance(t, str))
 
@@ -799,6 +812,7 @@ class RouterScanner:
             deprecated=deprecated,
             response_filter=response_filter,
             domains=domains_for(str_tags, route.path),
+            force=force,
             output=_classify_output(
                 response_annotation, response_filter, typevar_response, param_reasons
             ),
