@@ -324,6 +324,7 @@ the schema predictable:
 | `Field(exclude=True)` | never a GraphQL **output** field (it never serializes) but still a valid **input** field — exclude is serialization-only |
 | optional `Header()` / `Cookie()` params | never GraphQL arguments: optional ones are simply not sent, REQUIRED ones skip the route — credentials ride `passthrough_headers`, not arguments |
 | `@app.api_route(methods=["GET", "POST"])` | the first verb in GET/POST/PUT/PATCH/DELETE priority wins; the dropped verbs are warned about |
+| HTTP verb | read/write classification (GET reads, writes carry `destructiveHint`); `@mcp_query` / `@mcp_mutation` override per route when the verb lies |
 | sync `def` endpoints | run through Starlette's anyio threadpool — transparent to the bridge |
 | `BackgroundTasks` / `Request` / `Response` params | FastAPI injections, ignored as arguments; the route stays fully functional |
 | same-named model classes from different modules | qualified type names (`Item_mymod`), with a warning |
