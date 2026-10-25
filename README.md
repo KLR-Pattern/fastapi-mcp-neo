@@ -30,7 +30,7 @@ mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 | mode | what the agent does |
 |---|---|
 | `graphql` (default) | reads the schema once, then one query composes any routes — projection, aliases, one round trip |
-| `progressive` | the same queries, discovery in domain fragments — for large apps (constant ~1.5k-token catalog at any size) |
+| `progressive` | the same queries, discovery served in fragments grouped by your route **tags** (tags = "domains" in the schema) — for large apps (constant ~1.5k-token catalog at any size) |
 | `tools` | one typed tool per route — plain arguments, no GraphQL to write; clients gate each tool individually |
 
 **Contents** — [Installation](#installation) · [Why](#why) ·
@@ -390,7 +390,7 @@ interacts with:
 |---|---|---|---|
 | toolset | 3 tools, constant | 7 tools, constant | one tool per route |
 | catalog cost | ~0.6–2.5k tok, flat | ~1.5k tok, flat | ~250 tok per route |
-| discovery | the whole SDL in one shot (`get_schema`) | domain fragments on demand | typed signatures inline in every tool |
+| discovery | the whole SDL in one shot (`get_schema`) | tag-grouped fragments on demand (a route's tags are its "domain") | typed signatures inline in every tool |
 | invocation | the agent writes GraphQL documents | same documents | plain typed arguments — no GraphQL to write |
 | composition | one document combines any routes, one round trip | same | one route per call; clients compose via parallel tool calls |
 | field selection | selection set inside the document | same | a `fields` argument per tool |
@@ -423,7 +423,9 @@ graphql_query:                                    get_stats()          (parallel
   `mutation_include` narrows which writes exist at all. Best for
   composition-heavy internal work — one round trip across many routes.
 - **`progressive` — `graphql`'s contract for apps too big to hand over
-  in one shot.** The agent learns one domain at a time
+  in one shot.** The agent learns one domain at a time (a route's
+  FastAPI tags are its domain path — `tags=["billing:invoice"]` nests
+  `billing → invoice`)
   (`list_domains` → fragments); the catalog stays ~1.5k tokens whether
   the API has 30 routes or 300.
 
