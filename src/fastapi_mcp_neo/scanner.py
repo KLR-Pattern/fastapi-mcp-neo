@@ -779,6 +779,25 @@ class RouterScanner:
                 return None
 
         query_params, path_params, body_params = _route_params(flat)
+        # gname collision is a SCAN-time fact, decided here in the audit
+        # channel: the skip lands in readiness().skips, the route leaves
+        # handler.routes, and every downstream consumer (schema builder,
+        # route_tools, progressive discovery) stays consistent for free.
+        # (Deciding it at schema-build time instead left the route in the
+        # lists and only logged — readiness lied, tools mode crashed on
+        # the vanished domain, and same-named healthy siblings died.)
+        gnames: dict[str, str] = {}
+        for plist in (path_params, query_params, body_params):
+            for p_ in plist:
+                gname_ = p_.gname or p_.name
+                if gname_ in gnames:
+                    skip(
+                        f"two parameters map to GraphQL argument '{gname_}' "
+                        f"({gnames[gname_]} and {p_.name}); rename one of "
+                        "them (or its alias)"
+                    )
+                    return None
+                gnames[gname_] = p_.name
         response_filter = response_filter_kwarg(route)
         try:
             response_annotation, typevar_response, param_reasons = _trial_route_types(

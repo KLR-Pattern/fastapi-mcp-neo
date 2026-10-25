@@ -287,7 +287,15 @@ class RouteInvoker:
                 # NEVER leaks the raw exception text; the default (True)
                 # would propagate it straight into the GraphQL error
                 # message. Pinned by TestUnhandledExceptions.
-                transport=ASGITransport(app=self._app, raise_app_exceptions=False),
+                transport=ASGITransport(
+                    app=self._app,
+                    # Network parity for unhandled exceptions: the app's
+                    # error middleware answers 500 like a real server.
+                    # NOTE debug=True servers embed the traceback in that
+                    # 500 body (parity holds); the error MESSAGE is still
+                    # sanitized below so the trace never reaches agents.
+                    raise_app_exceptions=False,
+                ),
                 base_url="http://fastapi-mcp-neo.local",
                 timeout=self._timeout,
             )
@@ -364,12 +372,34 @@ class RouteInvoker:
                 f"{route.method} {route.path} timed out after {self._timeout}s",
                 extensions={"code": "TIMEOUT", "http_status": 504},
             ) from exc
+        if response.status_code >= 500:
+            # The exception behind this 500 was swallowed by the in-process
+            # transport (network parity); without this line the server has
+            # NO trace of it — worse diagnosability than running uvicorn.
+            logger.error(
+                "%s %s -> %s (unhandled route exception; the agent sees the "
+                "sanitized message only)",
+                route.method,
+                route.path,
+                response.status_code,
+            )
         if response.status_code >= 400:
             raise _http_error(route, response)
         if response.status_code == 204 or not response.content:
             return None  # bodyless (204 / explicit -> None): nothing to parse
         if "application/json" in response.headers.get("content-type", ""):
-            return response.json()
+            try:
+                return response.json()
+            except ValueError as exc:
+                # A streaming response that raised mid-body answers 200
+                # with a truncated payload (raise_app_exceptions=False
+                # only covers pre-response failures) — surface it as a
+                # route-contextual error, never a bare JSONDecodeError.
+                raise GraphQLError(
+                    f"{route.method} {route.path} -> truncated response "
+                    f"body (stream failed mid-body): {exc}",
+                    extensions={"code": "INTERNAL_ERROR", "http_status": 502},
+                ) from exc
         return {"_raw": response.text}
 
 
@@ -378,6 +408,13 @@ def _http_error(route: RouteInfo, response: Response) -> GraphQLError:
     if "application/json" in response.headers.get("content-type", ""):
         body = response.json()
     rendered = str(body)
+    if response.status_code >= 500 and "text/plain" in response.headers.get(
+        "content-type", ""
+    ):
+        # debug=True servers answer 500 with an HTML/text traceback page
+        # (network-parity); the trace must never reach the agent though —
+        # reduce it to the generic line the non-debug server sends.
+        rendered = "Internal Server Error"
     if len(rendered) > _MAX_ERROR_BODY:
         rendered = rendered[:_MAX_ERROR_BODY] + "…"
     return GraphQLError(

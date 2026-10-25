@@ -521,7 +521,90 @@ class TestCollisionBlastRadius:
             sdl = handler.get_sdl()
             assert "healthy" in sdl
             assert "collide" not in sdl
-            assert "mapping to GraphQL argument 'values'" in caplog.text
+            # the skip now lands in the SCAN-time audit channel
+            assert "two parameters map to GraphQL argument 'values'" in caplog.text
+        finally:
+            await handler.aclose()
+
+    async def test_skip_lands_in_readiness_and_routes_list(self):
+        """Scan-time decision: readiness().skips carries the collision and
+        the route leaves handler.routes — every downstream consumer
+        (schema, tools mode, progressive) stays consistent for free."""
+        app = FastAPI()
+
+        @app.post("/collide", tags=["t"])
+        async def collide(values: list[int], group: str = Query(alias="values")):
+            return {"n": len(values)}
+
+        @app.get("/healthy", tags=["t"])
+        async def healthy() -> dict:
+            return {"ok": True}
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            report = handler.readiness()
+            assert [s.path for s in report.skips] == ["/collide"]
+            assert "two parameters" in report.skips[0].reason
+            assert [r.field_name for r in handler.routes] == ["healthy"]
+        finally:
+            await handler.aclose()
+
+    async def test_tools_mode_mounts_when_sole_route_of_a_domain_skipped(self):
+        """Review regression #1: the vanished domain branch used to crash
+        route_tools' field lookup with KeyError."""
+
+        from fastmcp import Client
+
+        from fastapi_mcp_neo import FastAPIMCP
+
+        app = FastAPI()
+
+        @app.post("/collide", tags=["solo"], responses={})
+        async def collide(values: list[int], group: str = Query(alias="values")):
+            return {"n": len(values)}
+
+        @app.post("/fine", tags=["other"])
+        async def fine(x: int) -> dict:
+            return {"x": x}
+
+        @app.get("/healthy", tags=["other"])
+        async def healthy() -> dict:
+            return {"ok": True}
+
+        mcp = FastAPIMCP(app, name="tm", mode="tools", allow_mutation=True)
+        async with Client(mcp.mcp) as client:
+            names = sorted(t.name for t in await client.list_tools())
+        assert names == ["fine", "healthy"]
+        await mcp.handler.aclose()
+
+    async def test_skipped_route_cannot_poison_same_named_sibling(self):
+        """Review regression #2: a skipped route used to keep its field
+        name registered in `seen`, killing a healthy same-named sibling
+        with DuplicateFieldError. Scan-time skips never reach `seen`."""
+        app = FastAPI()
+
+        @app.get("/a", tags=["t"])
+        async def get_item(
+            payload: dict,
+            dup: str = Query(alias="payload"),  # body+query both → 'payload'
+        ) -> dict:
+            return {}
+
+        @app.get("/b/{x}", tags=["t"])
+        async def get_item_b(x: int) -> dict:
+            return {"x": x}
+
+        # healthy sibling with the SAME function name as the skipped one
+        @app.get("/c/{y}", tags=["t"])
+        async def get_item(y: int) -> dict:  # noqa: F811
+            return {"y": y}
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            report = handler.readiness()
+            assert [s.path for s in report.skips] == ["/a"]
+            sdl = handler.get_sdl()
+            assert "get_item_b" in sdl and "get_item" in sdl
         finally:
             await handler.aclose()
 

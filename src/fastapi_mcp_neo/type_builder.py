@@ -441,6 +441,8 @@ def is_heterogeneous_tuple(annotation: Any) -> bool:
     [Item!] silently dropped the int). Those degrade to the JSON scalar
     like unions do. Empty tuples (tuple[()]) also degrade."""
     stripped = strip_annotated(annotation)
+    if stripped is tuple:  # bare `tuple` == Tuple[(), ...] — same verdict
+        return True
     if get_origin(stripped) is not tuple:
         return False
     args = get_args(stripped)
@@ -677,9 +679,15 @@ class TypeBuilder:
         self, annotation: Any, context: str
     ) -> GraphQLScalarType | GraphQLObjectType | GraphQLEnumType | GraphQLList[Any]:
         annotation = _normalize_typevar(strip_annotated(annotation))
-        # Heterogeneous fixed tuples share the union fate: which type each
-        # position carries is positional, not listable — JSON scalar.
+        # Heterogeneous fixed tuples share the union fate — INCLUDING the
+        # audible degradation: readiness entry + SDL note, never silent.
         if is_heterogeneous_tuple(annotation):
+            self._record_degraded(
+                context,
+                "fixed heterogeneous tuple (positions carry different "
+                "types) — bridged as raw JSON; use tuple[X, ...] or a "
+                "uniform type to regain field selection",
+            )
             return GraphQLJSON
         if is_collection_annotation(annotation):
             inner = get_args(annotation)[0]
@@ -888,8 +896,14 @@ class TypeBuilder:
         flag at the argument level (NonNull there), not by the annotation.
         """
         annotation = _normalize_typevar(unwrap_optional(annotation))
-        # Symmetric with the output side (and the union fallback).
+        # Symmetric with the output side (and the union fallback): audible.
         if is_heterogeneous_tuple(annotation):
+            self._record_degraded(
+                context,
+                "fixed heterogeneous tuple (positions carry different "
+                "types) — bridged as raw JSON; use tuple[X, ...] or a "
+                "uniform type to regain field selection",
+            )
             return GraphQLJSON
         if is_collection_annotation(annotation):
             inner = get_args(annotation)[0]

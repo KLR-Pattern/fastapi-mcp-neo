@@ -185,15 +185,6 @@ class _Group:
             node = node.children.setdefault(seg, _Group())
         node.own.append(route)
 
-    def is_empty(self) -> bool:
-        return not self.own and all(child.is_empty() for child in self.children.values())
-
-    def prune(self) -> None:
-        for seg in [s for s, c in self.children.items() if c.is_empty()]:
-            del self.children[seg]
-        for child in self.children.values():
-            child.prune()
-
 
 class SchemaBuilder:
     """Builds a domain-grouped ``GraphQLSchema`` from ``RouteInfo`` items."""
@@ -267,21 +258,7 @@ class SchemaBuilder:
                     f"function or re-tag one route into another domain."
                 )
             seen[route.field_name] = (route.method, route.path)
-            try:
-                field = _leaf_field(route, self._invoker, self._types)
-            except DuplicateArgError as exc:
-                # Degrade-and-notify, not blast radius: one route's naming
-                # collision skips THAT route (loudly, with the fix) instead
-                # of failing the whole mount — bad fields degrade, bad
-                # routes skip, and this is a bad route.
-                logger.warning(
-                    "fastapi-mcp-neo skipped %s %s: %s Fix the naming and "
-                    "the route rejoins the schema.",
-                    route.method,
-                    route.path,
-                    exc,
-                )
-                continue
+            field = _leaf_field(route, self._invoker, self._types)
             index[(path, route.field_name)] = field
             fields[route.field_name] = field
         child_segments: list[str] = []
@@ -327,9 +304,9 @@ class SchemaBuilder:
     def _root_type(
         self, tree: _Group, *, mutation: bool
     ) -> GraphQLObjectType | None:
-        tree.prune()
-        if tree.is_empty():
-            return None
+        # Empty branches are dropped by _group_field's `if not fields`
+        # chain — insert() only creates nodes on routed paths, so no
+        # pre-pruning is needed here.
         fields: dict[str, GraphQLField] = {}
         for seg, child in sorted(tree.children.items()):
             group_field = self._group_field(child, (seg,), mutation=mutation)

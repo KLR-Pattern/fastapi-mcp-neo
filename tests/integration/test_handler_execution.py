@@ -356,3 +356,113 @@ class TestUnhandledExceptions:
             await handler.aclose()
         assert result["data"]["t"]["fine"] == {"ok": True}
         assert result["data"]["t"]["boom"] is None
+
+
+class TestReviewRegressionPins:
+    """Pins for the architecture-review findings: streaming-mid-exception
+    context, debug=True sanitization, server-side 500 diagnostics, and
+    tuple-degrade auditability."""
+
+    async def test_streaming_mid_exception_is_contextual(self):
+        from fastapi.responses import StreamingResponse
+
+        class Out(BaseModel):
+            items: list[int]
+
+        app = FastAPI()
+
+        @app.get("/liar", tags=["t"])
+        async def liar() -> Out:
+            async def gen():
+                yield b'{"items": [1, '
+                raise RuntimeError("mid-stream secret")
+
+            return StreamingResponse(gen(), media_type="application/json")
+
+        @app.get("/fine", tags=["t"])
+        async def fine() -> Out:
+            return Out(items=[7])
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            result = await handler.execute("{ t { fine { items } liar { items } } }")
+        finally:
+            await handler.aclose()
+        (error,) = result["errors"]
+        assert "truncated response body" in error["message"]
+        assert "GET /liar" in error["message"]
+        assert error["extensions"]["http_status"] == 502
+        assert "mid-stream secret" not in error["message"]
+        assert result["data"]["t"]["fine"] == {"items": [7]}
+
+    async def test_debug_traceback_never_reaches_the_agent(self):
+        class Out(BaseModel):
+            ok: bool
+
+        app = FastAPI(debug=True)
+
+        @app.get("/boom", tags=["t"])
+        async def boom() -> Out:
+            raise RuntimeError("secret-internal-detail")
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            result = await handler.execute("{ t { boom { ok } } }")
+        finally:
+            await handler.aclose()
+        (error,) = result["errors"]
+        assert "Traceback" not in error["message"]
+        assert "secret-internal-detail" not in error["message"]
+        assert error["extensions"]["http_status"] == 500
+
+    async def test_swallowed_500_leaves_a_server_trace(self, caplog):
+        class Out(BaseModel):
+            ok: bool
+
+        app = FastAPI()
+
+        @app.get("/boom", tags=["t"])
+        async def boom() -> Out:
+            raise RuntimeError("deadlock-in-pool-7")
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            with caplog.at_level("ERROR", logger="fastapi_mcp_neo.invoker"):
+                await handler.execute("{ t { boom { ok } } }")
+        finally:
+            await handler.aclose()
+        assert "unhandled route exception" in caplog.text
+        assert "/boom" in caplog.text
+
+    async def test_heterogeneous_tuple_degrade_is_audited(self):
+        class Item(BaseModel):
+            name: str
+
+        app = FastAPI()
+
+        @app.get("/pair", tags=["t"])
+        async def pair() -> tuple[Item, int]:
+            return (Item(name="x"), 2)
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            degraded = dict(handler.readiness().degraded_fields)
+            assert any(
+                "heterogeneous tuple" in reason for reason in degraded.values()
+            )
+        finally:
+            await handler.aclose()
+
+    async def test_bare_lowercase_tuple_degrades_like_typing_tuple(self):
+        app = FastAPI()
+
+        @app.get("/bare", tags=["t"])
+        async def bare() -> tuple:  # noqa: UP006 — deliberate legacy spelling
+            return (1, "x")
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            sdl = handler.get_sdl()
+            assert "bare: JSON" in sdl  # same verdict as typing.Tuple
+        finally:
+            await handler.aclose()
