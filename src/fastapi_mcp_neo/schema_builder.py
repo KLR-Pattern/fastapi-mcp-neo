@@ -249,7 +249,7 @@ class SchemaBuilder:
 
     def _group_field(
         self, node: _Group, path: tuple[str, ...], *, mutation: bool
-    ) -> GraphQLField:
+    ) -> GraphQLField | None:
         fields: dict[str, GraphQLField] = {}
         index = self._mutation_fields if mutation else self._query_fields
         # Duplicate check scoped to THIS domain group — the same boundary
@@ -267,7 +267,21 @@ class SchemaBuilder:
                     f"function or re-tag one route into another domain."
                 )
             seen[route.field_name] = (route.method, route.path)
-            field = _leaf_field(route, self._invoker, self._types)
+            try:
+                field = _leaf_field(route, self._invoker, self._types)
+            except DuplicateArgError as exc:
+                # Degrade-and-notify, not blast radius: one route's naming
+                # collision skips THAT route (loudly, with the fix) instead
+                # of failing the whole mount — bad fields degrade, bad
+                # routes skip, and this is a bad route.
+                logger.warning(
+                    "fastapi-mcp-neo skipped %s %s: %s Fix the naming and "
+                    "the route rejoins the schema.",
+                    route.method,
+                    route.path,
+                    exc,
+                )
+                continue
             index[(path, route.field_name)] = field
             fields[route.field_name] = field
         child_segments: list[str] = []
@@ -286,8 +300,16 @@ class SchemaBuilder:
                     f"endpoint function or re-tag it out of parent domain "
                     f"'{':'.join(path)}'."
                 )
-            fields[seg] = self._group_field(child, (*path, seg), mutation=mutation)
+            child_field = self._group_field(child, (*path, seg), mutation=mutation)
+            if child_field is None:
+                # every route under this subdomain was skipped (e.g. a
+                # DuplicateArg collision) — an empty object type would be
+                # an invalid schema, drop the branch
+                continue
+            fields[seg] = child_field
             child_segments.append(seg)
+        if not fields:
+            return None
         obj = GraphQLObjectType(
             name=self._unique_group_name(path, mutation=mutation),
             fields=fields,
@@ -308,9 +330,11 @@ class SchemaBuilder:
         tree.prune()
         if tree.is_empty():
             return None
-        fields = {}
+        fields: dict[str, GraphQLField] = {}
         for seg, child in sorted(tree.children.items()):
-            fields[seg] = self._group_field(child, (seg,), mutation=mutation)
+            group_field = self._group_field(child, (seg,), mutation=mutation)
+            if group_field is not None:
+                fields[seg] = group_field
         if not fields:
             return None
         return GraphQLObjectType(

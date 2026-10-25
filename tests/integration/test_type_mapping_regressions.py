@@ -614,3 +614,70 @@ class TestTier3UnboundTypeVar:
             "GenericEnvelope" in r and "unbound TypeVar" in r and "parameterize" in r
             for r in reasons
         )
+
+
+class PairItem(BaseModel):
+    name: str
+
+
+class TestHeterogeneousTuples:
+    """Migrated from fastmcp's tuple schemas: a FIXED tuple with differing
+    position types cannot be a GraphQL list (the list would promise one
+    element type; the old mapping took args[0] and silently dropped the
+    rest). Variadic tuple[X, ...] and all-same fixed tuples ARE
+    wire-accurate as lists (pydantic serializes tuples as arrays)."""
+
+    async def test_heterogeneous_return_degrades_to_json(self):
+        app = FastAPI()
+
+        @app.get("/pair", tags=["tp"])
+        async def pair() -> tuple[PairItem, int]:
+            return (PairItem(name="x"), 2)
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            sdl = handler.get_sdl()
+            assert "pair: JSON" in sdl
+            result = await handler.execute("{ tp { pair } }")
+            assert result["data"]["tp"]["pair"] == [{"name": "x"}, 2]
+        finally:
+            await handler.aclose()
+
+    async def test_heterogeneous_body_degrades_to_json(self):
+        app = FastAPI()
+
+        @app.get("/ping", tags=["tp"])
+        async def ping() -> dict:
+            return {"ok": True}
+
+        @app.post("/pairin", tags=["tp"])
+        async def pairin(value: tuple[PairItem, int]) -> dict:
+            return {"name": value[0].name, "count": value[1]}
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            sdl = handler.get_sdl()
+            assert "pairin(value: JSON" in sdl
+            result = await handler.execute(
+                'mutation($v: JSON!) { tp { pairin(value: $v) } }',
+                variables={"v": [{"name": "y"}, 5]},
+            )
+            assert result["data"]["tp"]["pairin"] == {"name": "y", "count": 5}
+        finally:
+            await handler.aclose()
+
+    def test_variadic_and_uniform_tuples_stay_lists(self):
+        app = FastAPI()
+
+        @app.get("/variadic", tags=["tp"])
+        async def variadic() -> tuple[str, ...]:
+            return ("a",)
+
+        @app.get("/uniform", tags=["tp"])
+        async def uniform() -> tuple[int, int]:
+            return (1, 2)
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        sdl = handler.get_sdl()
+        assert "variadic: [String!]" in sdl
+        assert "uniform: [Int!]" in sdl  # wire-accurate: pydantic emits arrays

@@ -26,7 +26,7 @@ from typing import Annotated, Any
 
 import pytest
 from fastapi import Body, Cookie, FastAPI, File, Form, Header, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from fastapi_mcp_neo import RouterGraphQLHandler
 
@@ -497,3 +497,136 @@ class TestWholeNoneListQuery:
             await handler.aclose()
         assert omitted["data"]["l"]["ls"] == {"seen": None}
         assert passed["data"]["l"]["ls"] == {"seen": ["a", "b"]}
+
+
+class TestCollisionBlastRadius:
+    """fastmcp's parameter-collision scenario: one route whose params map
+    to the same GraphQL argument must degrade-and-notify (skip THAT route,
+    loudly) — not fail the whole mount, stranding every healthy route."""
+
+    async def test_colliding_route_skips_others_mount(self, caplog):
+        app = FastAPI()
+
+        @app.post("/collide", tags=["t"])
+        async def collide(values: list[int], group: str = Query(alias="values")):
+            return {"n": len(values)}
+
+        @app.get("/healthy", tags=["t"])
+        async def healthy() -> dict:
+            return {"ok": True}
+
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.schema_builder"):
+            handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            sdl = handler.get_sdl()
+            assert "healthy" in sdl
+            assert "collide" not in sdl
+            assert "mapping to GraphQL argument 'values'" in caplog.text
+        finally:
+            await handler.aclose()
+
+    async def test_skipped_sole_mutation_drops_the_mutation_root(self, caplog):
+        """All-writes-skipped must not leave an empty (invalid) Mutation
+        type — the root disappears instead."""
+
+        app = FastAPI()
+
+        @app.post("/collide", tags=["t"])
+        async def collide(values: list[int], group: str = Query(alias="values")):
+            return {"n": len(values)}
+
+        @app.get("/healthy", tags=["t"])
+        async def healthy() -> dict:
+            return {"ok": True}
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            assert "type Mutation" not in handler.get_sdl()
+            result = await handler.execute("{ t { healthy } }")
+            assert result["data"]["t"]["healthy"] == {"ok": True}
+        finally:
+            await handler.aclose()
+
+
+class TestLowPins:
+    """Four single-test pins migrated from fastmcp's from_openapi suite:
+    discriminated-union bodies, model inheritance (the FastAPI allOf),
+    SecretStr response fields, and raw text/plain bodies."""
+
+    async def test_three_level_inheritance_round_trips(self):
+        app = FastAPI()
+
+        @app.get("/ping", tags=["inh"])
+        async def ping() -> dict:
+            return {"ok": True}
+
+        @app.post("/cat", tags=["inh"])
+        async def cat(payload: _GapCatIn) -> dict:
+            return payload.model_dump(mode="json")
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            sdl = handler.get_sdl()
+            # all three generations' fields present in the input type
+            assert "name" in sdl and "meow_volume" in sdl
+            result = await handler.execute(
+                "mutation($c: _GapCatInInput!) { inh { cat(payload: $c) } }",
+                variables={"c": {"id": 1, "name": "k", "meow_volume": 3}},
+            )
+            assert result["data"]["inh"]["cat"]["name"] == "k"
+        finally:
+            await handler.aclose()
+
+    async def test_secret_str_field_degrades_loudly(self):
+        app = FastAPI()
+
+        @app.get("/user", tags=["sec"])
+        async def user() -> _GapSecretUser:
+            return _GapSecretUser(name="alice", password="hunter2")  # noqa: S106
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            degraded = dict(handler.readiness().degraded_fields)
+            assert any("password" in f for f in degraded)
+            result = await handler.execute("{ sec { user { password } } }")
+            assert result["data"]["sec"]["user"]["password"] == "**********"
+        finally:
+            await handler.aclose()
+
+    async def test_text_plain_body_string_passthrough(self):
+        app = FastAPI()
+
+        @app.get("/ping", tags=["raw"])
+        async def ping() -> dict:
+            return {"ok": True}
+
+        @app.post("/echo", tags=["raw"])
+        async def echo(body: str = Body(media_type="text/plain")) -> dict:
+            return {"got": body}
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            result = await handler.execute(
+                "mutation($b: String!) { raw { echo(body: $b) } }",
+                variables={"b": "hello"},
+            )
+            assert result["data"]["raw"]["echo"] == {"got": "hello"}
+        finally:
+            await handler.aclose()
+
+
+class _GapAnimal(BaseModel):
+    id: int
+
+
+class _GapPetIn(_GapAnimal):
+    name: str
+
+
+class _GapCatIn(_GapPetIn):
+    meow_volume: int
+
+
+class _GapSecretUser(BaseModel):
+    name: str
+    password: SecretStr

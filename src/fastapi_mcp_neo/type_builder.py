@@ -431,6 +431,26 @@ def is_collection_annotation(annotation: Any) -> bool:
     return get_origin(strip_annotated(annotation)) in (list, tuple, set, frozenset)
 
 
+def is_heterogeneous_tuple(annotation: Any) -> bool:
+    """Fixed-length tuples whose positions carry DIFFERENT types.
+
+    JSON has no tuples — pydantic serializes them as arrays — so
+    tuple[X, ...] (variadic) and all-same fixed tuples are wire-accurate
+    as lists. Differing positions are not: a list would promise one
+    element type while position 2 breaks it (tuple[Item, int] mapped as
+    [Item!] silently dropped the int). Those degrade to the JSON scalar
+    like unions do. Empty tuples (tuple[()]) also degrade."""
+    stripped = strip_annotated(annotation)
+    if get_origin(stripped) is not tuple:
+        return False
+    args = get_args(stripped)
+    if not args:
+        return True
+    if args[-1] is Ellipsis:  # tuple[X, ...]
+        return False
+    return not all(a == args[0] for a in args)
+
+
 def literal_values(annotation: Any) -> tuple[Any, ...] | None:
     """Return Literal values, or None if the annotation is not a Literal."""
     annotation = unwrap_optional(annotation)
@@ -657,6 +677,10 @@ class TypeBuilder:
         self, annotation: Any, context: str
     ) -> GraphQLScalarType | GraphQLObjectType | GraphQLEnumType | GraphQLList[Any]:
         annotation = _normalize_typevar(strip_annotated(annotation))
+        # Heterogeneous fixed tuples share the union fate: which type each
+        # position carries is positional, not listable — JSON scalar.
+        if is_heterogeneous_tuple(annotation):
+            return GraphQLJSON
         if is_collection_annotation(annotation):
             inner = get_args(annotation)[0]
             if is_optional_annotation(inner):
@@ -864,6 +888,9 @@ class TypeBuilder:
         flag at the argument level (NonNull there), not by the annotation.
         """
         annotation = _normalize_typevar(unwrap_optional(annotation))
+        # Symmetric with the output side (and the union fallback).
+        if is_heterogeneous_tuple(annotation):
+            return GraphQLJSON
         if is_collection_annotation(annotation):
             inner = get_args(annotation)[0]
             if is_optional_annotation(inner):
