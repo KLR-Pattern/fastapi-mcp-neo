@@ -308,3 +308,51 @@ class TestGroupNameCollisions:
                 "shop_catalog": {"flat": {"id": 2}},
             }
         }, result
+
+
+class TestUnhandledExceptions:
+    """Migrated from fastapi_mcp's test_call_tool_raise_error, hardened:
+    unhandled route exceptions must match REAL network behavior — a 500
+    with the generic body — and never leak the raw exception text (the
+    default ASGITransport would propagate it into the GraphQL message)."""
+
+    @pytest.fixture
+    def boom_app(self):
+        from fastapi import FastAPI
+        from pydantic import BaseModel
+
+        class Out(BaseModel):
+            ok: bool
+
+        app = FastAPI()
+
+        @app.get("/boom", tags=["t"])
+        async def boom() -> Out:
+            raise RuntimeError("secret-internal-detail")
+
+        @app.get("/fine", tags=["t"])
+        async def fine() -> Out:
+            return Out(ok=True)
+
+        return app
+
+    async def test_exception_becomes_http_500_not_a_leak(self, boom_app):
+        handler = RouterGraphQLHandler(boom_app, allow_mutation=False)
+        try:
+            result = await handler.execute("{ t { boom { ok } } }")
+        finally:
+            await handler.aclose()
+        (error,) = result["errors"]
+        assert error["message"] == "GET /boom -> 500: Internal Server Error"
+        assert error["extensions"]["http_status"] == 500
+        assert "secret-internal-detail" not in error["message"]
+        assert result["data"] == {"t": {"boom": None}}
+
+    async def test_siblings_survive_an_exploding_field(self, boom_app):
+        handler = RouterGraphQLHandler(boom_app, allow_mutation=False)
+        try:
+            result = await handler.execute("{ t { fine { ok } boom { ok } } }")
+        finally:
+            await handler.aclose()
+        assert result["data"]["t"]["fine"] == {"ok": True}
+        assert result["data"]["t"]["boom"] is None

@@ -282,7 +282,12 @@ class RouteInvoker:
                 await manager.__aenter__()
                 self._lifespan = manager
             self._client = AsyncClient(
-                transport=ASGITransport(app=self._app),
+                # Network parity for unhandled exceptions: a real server's
+                # error middleware answers 500 "Internal Server Error" and
+                # NEVER leaks the raw exception text; the default (True)
+                # would propagate it straight into the GraphQL error
+                # message. Pinned by TestUnhandledExceptions.
+                transport=ASGITransport(app=self._app, raise_app_exceptions=False),
                 base_url="http://fastapi-mcp-neo.local",
                 timeout=self._timeout,
             )

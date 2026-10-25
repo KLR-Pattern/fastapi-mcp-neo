@@ -600,3 +600,35 @@ class TestDeprecatedFiltering:
         routes, skips = scan(app, exclude_deprecated=True)
         assert {r.path for r in routes} == {"/new"}
         assert not any(s.path == "/old" for s in skips)  # config drop, not a skip
+
+
+class TestExtraResponsesIgnored:
+    """Routes commonly declare `responses={404: {"model": Err}}` for docs;
+    the bridge must ignore the extra models (they are documentation, not
+    the route's output contract). Smoke, migrated from complex_app."""
+
+    def test_responses_kwarg_does_not_disturb_bridging(self):
+        from pydantic import BaseModel
+
+        class Item(BaseModel):
+            id: int
+
+        class Err(BaseModel):
+            detail: str
+
+        app = FastAPI()
+
+        @app.get(
+            "/items/{item_id}",
+            response_model=Item,
+            responses={404: {"model": Err}, 422: {"model": Err}},
+        )
+        async def get_item(item_id: int) -> Item:
+            """Has extra response models."""
+            return Item(id=item_id)
+
+        routes, skips = scan(app)
+        assert [r.field_name for r in routes] == ["get_item"]
+        assert skips == []
+        # the error model never becomes a GraphQL type: the field's type is Item
+        assert routes[0].response_annotation is Item

@@ -360,3 +360,140 @@ class TestParameterMatrix:
         leaf = next(iter(node.values()))
         assert leaf is not None, f"{label}: field nulled"
         assert predicate(leaf), f"{label}: value mismatch: {leaf}"
+
+
+# --- gap-migration tests (models at module level: this file has
+# `from __future__ import annotations`, so function-local classes would
+# arrive as unresolvable ForwardRefs) -------------------------------
+
+
+class _GapKind(str, Enum):
+    part = "part"
+    service = "service"
+
+
+class _GapLineIn(BaseModel):
+    sku: uuid.UUID
+    kind: _GapKind = _GapKind.part
+    price: Decimal
+
+
+class _GapOrderIn(BaseModel):
+    note: str
+    lines: list[_GapLineIn]
+
+
+class _GapLineOut(BaseModel):
+    sku: uuid.UUID
+    kind: _GapKind
+    price: Decimal
+
+
+class _GapOrderOut(BaseModel):
+    note: str
+    lines: list[_GapLineOut]
+
+
+class _GapGot(BaseModel):
+    uid: uuid.UUID
+    at: datetime
+
+
+class _GapSeen(BaseModel):
+    seen: list[str] | None
+
+
+class TestNestedBodyExecution:
+    """Migrated from fastapi_mcp's create_order shape: a body model whose
+    fields are MODELS and LISTS OF MODELS (with custom scalars inside),
+    executed end to end — the type mapping is unit-tested, the round trip
+    through a real document was not."""
+
+    async def test_nested_input_literal_round_trips(self):
+        app = FastAPI()
+
+        @app.get("/ping", tags=["orders"])
+        async def ping() -> dict:
+            return {"ok": True}
+
+        @app.post("/orders", tags=["orders"])
+        async def create_order(payload: _GapOrderIn) -> _GapOrderOut:
+            return _GapOrderOut.model_validate(
+                {**payload.model_dump(), "note": payload.note.upper()}
+            )
+
+        handler = RouterGraphQLHandler(app, allow_mutation=True)
+        try:
+            result = await handler.execute(
+                "mutation($o: _GapOrderInInput!) { orders { create_order(payload: $o)"
+                " { note lines { sku kind price } } } }",
+                variables={
+                    "o": {
+                        "note": "first",
+                        "lines": [
+                            {
+                                "sku": "123e4567-e89b-12d3-a456-426614174000",
+                                "kind": "service",
+                                "price": "19.99",
+                            }
+                        ],
+                    }
+                },
+            )
+        finally:
+            await handler.aclose()
+        assert not result.get("errors"), result["errors"]
+        order = result["data"]["orders"]["create_order"]
+        assert order["note"] == "FIRST"
+        (line,) = order["lines"]
+        assert line["sku"] == "123e4567-e89b-12d3-a456-426614174000"
+        assert line["kind"] == "service"
+        assert line["price"] == "19.99"
+
+
+class TestTypedResponseScalars:
+    """A response_model with UUID/datetime fields must serialize to their
+    string forms on the output side (migrated from get_product)."""
+
+    async def test_uuid_datetime_response_fields(self):
+        app = FastAPI()
+
+        @app.get("/got/{uid}", tags=["g"])
+        async def get_it(uid: uuid.UUID) -> _GapGot:
+            return _GapGot(uid=uid, at=datetime(2026, 10, 25, 12, 0, 0))
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            result = await handler.execute(
+                "query($u: UUID!) { g { get_it(uid: $u) { uid at } } }",
+                variables={"u": "123e4567-e89b-12d3-a456-426614174000"},
+            )
+        finally:
+            await handler.aclose()
+        got = result["data"]["g"]["get_it"]
+        assert got["uid"] == "123e4567-e89b-12d3-a456-426614174000"
+        assert got["at"].startswith("2026-10-25T12:00")
+
+
+class TestWholeNoneListQuery:
+    """A list query param whose DEFAULT is None (not []) must simply not
+    be sent when omitted (migrated from list_products)."""
+
+    async def test_none_list_query_omitted(self):
+        app = FastAPI()
+
+        @app.get("/ls", tags=["l"])
+        async def ls(tag: list[str] | None = None) -> _GapSeen:
+            return _GapSeen(seen=tag)
+
+        handler = RouterGraphQLHandler(app, allow_mutation=False)
+        try:
+            omitted = await handler.execute("{ l { ls { seen } } }")
+            passed = await handler.execute(
+                "query($t: [String!]) { l { ls(tag: $t) { seen } } }",
+                variables={"t": ["a", "b"]},
+            )
+        finally:
+            await handler.aclose()
+        assert omitted["data"]["l"]["ls"] == {"seen": None}
+        assert passed["data"]["l"]["ls"] == {"seen": ["a", "b"]}

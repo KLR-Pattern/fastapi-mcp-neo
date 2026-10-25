@@ -681,3 +681,25 @@ class TestProjectionNudge:
             t = {x.name: x for x in await client.list_tools()}["get_user"]
         desc = t.inputSchema["properties"]["fields"]["description"]
         assert desc.startswith("Pass to fetch only these fields")
+
+
+class TestServerErrorIsError:
+    """e2e arm of the unhandled-exception parity: the tool call answers on
+    the isError channel with the generic 500 text, not the exception."""
+
+    async def test_500_rides_isError_without_leaking(self):
+        from pydantic import BaseModel
+
+        class Out(BaseModel):
+            ok: bool
+
+        app = FastAPI()
+
+        @app.get("/boom", tags=["t"])
+        async def boom() -> Out:
+            raise RuntimeError("secret-internal-detail")
+
+        mcp = FastAPIMCP(app, name="boom", mode="tools")
+        async with Client(mcp.mcp) as client:
+            with pytest.raises(ToolError, match="500"):
+                await client.call_tool("boom", {})
