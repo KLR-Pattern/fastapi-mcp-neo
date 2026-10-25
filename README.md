@@ -174,8 +174,8 @@ The shape follows two rules:
 
 - **Writes are exposed by default** — the bridge mirrors the app, and the
   app's own auth gates them per caller (`allow_mutation=False` for a
-  read-only view; `mutation_include=[...]` globs to whitelist specific
-  write routes). `graphql_mutation` carries `destructiveHint`, so clients
+  read-only view; write scoping via `mutation_include` is deprecated with the
+  other path globs — pair tag-filtered deployments instead). `graphql_mutation` carries `destructiveHint`, so clients
   confirm writes; `graphql_query` refuses mutation documents.
 - **Mutation ordering**: per the GraphQL spec, mutation fields at the ROOT
   execute serially in declaration order — with the grouped schema that means
@@ -299,7 +299,7 @@ exposes them (`path`, `method`, `reason`) for CI assertions, and
 | `Form()` / `File()` body | MCP tool arguments are JSON; the protocol has no file channel yet (SEP-2631 draft). The route stays available over plain HTTP |
 | required header/cookie parameter | headers are not GraphQL arguments — make it optional; caller credentials ride `passthrough_headers` |
 | query-parameter model mixed with plain params | FastAPI itself cannot serve that shape on the wire; move the plain params into the model |
-| write verbs, when you pass `allow_mutation=False` (read-only view) | writes are exposed by default; narrow them with `mutation_include` or hide with `allow_mutation=False` |
+| write verbs, when you pass `allow_mutation=False` (read-only view) | writes are exposed by default; hide them with `allow_mutation=False`, or serve writes from a separate tag-filtered deployment |
 | hidden route (`include_in_schema=False`) | opt in with `include_hidden=True` |
 | returns a raw `Response` (streaming, plain text) | no typed body to expose |
 | response/parameter annotation with no mapping at all (`-> bytes`, a bare custom class, mixed-type `Literal`) | no per-field shape exists to degrade to — annotate with a JSON-compatible type |
@@ -369,7 +369,6 @@ context). Use `mount_to(app, "/mcp")` to serve MCP on the app's own port.
 mcp = FastAPIMCP(
     app,
     name="my-app",
-    include=["/api/*"],
     include_tags=["iam:*"],  # keep only routes tagged iam:… (untagged drop)
     # The caller's own Authorization header travels to the routes by default;
     # an empty list disables forwarding entirely.
@@ -420,7 +419,8 @@ graphql_query:                                    get_stats()          (parallel
   between reads and writes: `graphql_query` auto-runs (`readOnlyHint`),
   `graphql_mutation` asks for confirmation (`destructiveHint`);
   `allow_mutation=False` gives analysts a pure read-only deployment and
-  `mutation_include` narrows which writes exist at all. Best for
+  (deprecated `mutation_include` used to scope writes; pair
+  tag-filtered deployments instead). Best for
   composition-heavy internal work — one round trip across many routes.
 - **`progressive` — `graphql`'s contract for apps too big to hand over
   in one shot.** The agent learns one domain at a time (a route's
@@ -577,7 +577,7 @@ the same one-tool-per-route shape with a typed soul:
 | fastapi_mcp | here |
 |---|---|
 | `FastApiMCP(app)` | `FastAPIMCP(app, mode="tools")` |
-| `include_operations=["get_note"]` | `include=["/notes/{note_id}"]` (path globs) or `include_tags=[...]` |
+| `include_operations=["get_note"]` | `include_tags=[...]` (path globs are deprecated) |
 | `mcp.mount()` (lifespan never fires [#256](https://github.com/tadata-org/fastapi_mcp/issues/256); requests hang [#259](https://github.com/tadata-org/fastapi_mcp/issues/259)) | `mount_to(app, "/mcp")` — lifespan chained, e2e-tested |
 | `AuthConfig` | `auth=` (TokenVerifier gate / OAuth provider) + `passthrough_headers` — each caller acts as themselves |
 | tool names from `operation_id` (`list_notes_notes_get`) | tool names from function names (`list_notes`) |
@@ -677,7 +677,8 @@ One token, two checks: the gate verifies the endpoint, and the routes' own
 security schemes verify business calls — the same Bearer reaches them via
 `passthrough_headers`. A perimeter you already control (network ACL,
 gateway auth on the `/mcp` path) works too. Combine with
-`allow_mutation=False` / `mutation_include` to keep writes out of reach.
+`allow_mutation=False` (or a separate read-only, tag-filtered
+  deployment) to keep writes out of reach.
 
 ### MCP endpoint OAuth
 

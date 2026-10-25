@@ -112,10 +112,12 @@ def build_app() -> FastAPI:
 
 
 def build_mcp(app: FastAPI, *, exclude_oauth: bool = True) -> FastAPIMCP:
+    # Tag-based scoping (path globs are deprecated): the bridge serves the
+    # notes domain; OAuth login routes stay HTTP-only either way.
     mcp = FastAPIMCP(
         app,
         name="oauth-e2e",
-        exclude=["/oauth/*", "/login*"] if exclude_oauth else None,
+        include_tags=["account"] if exclude_oauth else None,
     )
     mcp.mount_to(app, "/mcp")
     return mcp

@@ -68,6 +68,10 @@ class FastAPIMCP:
             handshake (MCP protocol field) — a short map of the domains and
             how to query. ``None`` (default) sends nothing.
         include/exclude: fnmatch globs over route paths (exclude wins).
+            DEPRECATED — filter by tags instead: paths are brittle
+            (refactors move them; two verbs on one path cannot be split),
+            while tags are the dimension the bridge already speaks.
+            Functional this release, warns on use.
         include_tags/exclude_tags: fnmatch globs over route tags
             (exclude_tags wins). A route matches when ANY of its string
             tags matches ANY pattern — "iam:*" matches tags=["iam:users"].
@@ -82,7 +86,9 @@ class FastAPIMCP:
             destructiveHint so clients confirm writes. Pass False for a
             read-only view.
         mutation_include: fnmatch globs limiting WHICH write routes become
-            mutations (requires allow_mutation=True).
+            mutations (requires allow_mutation=True). DEPRECATED with the
+            other path globs — scope writes with a tag-filtered
+            read-only/fully-writable deployment pair instead.
         passthrough_headers: Whitelist of inbound header names (case
             insensitive) MCP/GraphQL callers may forward into route calls.
             ``None`` (default) forwards ``authorization`` — each client acts
@@ -200,7 +206,7 @@ class FastAPIMCP:
                 "Schema carries %d routes (> %d): tools mode registers one "
                 "tool per route, so the catalog grows linearly (~250 tokens "
                 "per route measured). Consider mode='progressive' (constant "
-                "per-session cost) or narrowing with include/exclude to a "
+                "per-session cost) or narrowing with include_tags to a "
                 "curated subset — per-tool permissions work best on small, "
                 "deliberate selections.",
                 route_count,

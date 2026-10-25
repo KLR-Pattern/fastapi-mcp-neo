@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Deprecated
+
+- **Path-glob route filters: `include` / `exclude` / `mutation_include`.**
+  Tags are the filter dimension (`include_tags` / `exclude_tags`): they are
+  what the whole bridge already speaks (the domain tree, progressive
+  discovery, multi-deployment scoping all derive from tags), while paths
+  are brittle — refactors move them, and two verbs sharing a path cannot
+  be split. The path filters remain functional this release and warn on
+  use; scope writes with a tag-filtered read-only/fully-writable
+  deployment pair instead of `mutation_include`.
+
 ## 0.15.0 (2026-10-24)
 
 ### Added

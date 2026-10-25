@@ -92,13 +92,19 @@ class TestServerBehavior:
 
     async def test_warning_respects_include_filter(self, caplog):
         """Route count for the warning is the count that ENTERS the schema
-        (include/exclude applied), not the raw app.route count."""
-        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
-            mcp = FastAPIMCP(
-                big_app(30), name="filtered", include=["/thing0", "/thing1", "/thing2"]
-            )
+        (filters applied), not the raw app.route count. Path globs are
+        deprecated (tags are the dimension) but functional this release."""
+        with pytest.warns(DeprecationWarning, match="include_tags"):
+            with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+                mcp = FastAPIMCP(
+                    big_app(30), name="filtered", include=["/thing0", "/thing1", "/thing2"]
+                )
         assert len(mcp.handler.routes) == 3
         assert "Consider mode=" not in caplog.text
+
+    async def test_path_glob_filters_warn_deprecation(self):
+        with pytest.warns(DeprecationWarning, match="path-glob filters"):
+            FastAPIMCP(users_app(), name="dep", exclude=["/x"])
 
     async def test_domains_registry_built(self):
         mcp = FastAPIMCP(users_app(), name="test-api")

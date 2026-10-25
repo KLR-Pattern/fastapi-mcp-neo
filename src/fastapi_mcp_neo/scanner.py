@@ -11,6 +11,7 @@ from __future__ import annotations
 import fnmatch
 import inspect
 import logging
+import warnings
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -633,6 +634,18 @@ class RouterScanner:
         mutation_include: Sequence[str] | None = None,
     ) -> None:
         self._app = app
+        if include is not None or exclude is not None or mutation_include is not None:
+            warnings.warn(
+                "path-glob filters (include/exclude/mutation_include) are "
+                "deprecated: filter by tags instead (include_tags/"
+                "exclude_tags). Paths are a brittle dimension - refactors "
+                "move them, and two verbs on one path cannot be split - "
+                "while tags are the semantic dimension the whole bridge "
+                "(domain tree, progressive discovery) already speaks. The "
+                "path filters remain functional this release.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
         self._include = include
         self._exclude = exclude
         self._include_tags = include_tags

@@ -13,7 +13,7 @@ destructiveHint), and a ``fields`` argument gives per-tool projection
 Why this exists when the constant catalog already won the context war:
 MCP's permission model is per-TOOL. Clients gate, approve and display
 tools individually — a single ``graphql_query`` tool cannot be allowed
-per route at the client layer. Curated subsets (include/exclude) keep
+per route at the client layer. Curated subsets (include_tags) keep
 the catalog small while restoring per-route client-side least privilege.
 """
 
