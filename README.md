@@ -31,7 +31,7 @@ mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 |---|---|
 | `graphql` (default) | reads the schema once, then one query composes any routes — projection, aliases, one round trip |
 | `progressive` | the same queries, discovery served in fragments grouped by your route **tags** (tags = "domains" in the schema) — for large apps (constant ~1.5k-token catalog at any size) |
-| `tools` | one typed tool per route — plain arguments, no GraphQL to write; clients gate each tool individually |
+| `tools` | one typed tool per route — plain arguments, no GraphQL to write; clients gate each tool individually. The natural landing for [fastapi_mcp migrants](#migrating-from-fastapi_mcp): the tool-per-route shape carries over, so existing permission and client setups keep working (the other modes change the tool set) |
 
 **Contents** — [Installation](#installation) · [Why](#why) ·
 [How it works](#how-it-works) · [Capability boundaries](#capability-boundaries) · [Usage](#usage) · [Agent lifecycle](#what-the-agent-sees-connection-lifecycle) · [Authentication](#authentication) ·
