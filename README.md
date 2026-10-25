@@ -16,7 +16,11 @@ app = FastAPI()
 
 # ... your existing routes ...
 
-mcp = FastAPIMCP(app, name="my-app")
+mcp = FastAPIMCP(
+    app,
+    name="my-app",
+    mode="graphql",  # or "progressive" / "tools" — the three shapes below
+)
 mcp.run()  # HTTP MCP server: get_schema + graphql_query + graphql_mutation
 ```
 
