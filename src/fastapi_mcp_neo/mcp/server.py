@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -67,11 +66,6 @@ class FastAPIMCP:
         instructions: Usage guide agents receive with the ``initialize``
             handshake (MCP protocol field) — a short map of the domains and
             how to query. ``None`` (default) sends nothing.
-        include/exclude: fnmatch globs over route paths (exclude wins).
-            DEPRECATED — filter by tags instead: paths are brittle
-            (refactors move them; two verbs on one path cannot be split),
-            while tags are the dimension the bridge already speaks.
-            Functional this release, warns on use.
         include_tags/exclude_tags: fnmatch globs over route tags
             (exclude_tags wins). A route matches when ANY of its string
             tags matches ANY pattern — "iam:*" matches tags=["iam:users"].
@@ -85,10 +79,6 @@ class FastAPIMCP:
             auth gates writes per caller; the mutation tool carries
             destructiveHint so clients confirm writes. Pass False for a
             read-only view.
-        mutation_include: fnmatch globs limiting WHICH write routes become
-            mutations (requires allow_mutation=True). DEPRECATED with the
-            other path globs — scope writes with a tag-filtered
-            read-only/fully-writable deployment pair instead.
         passthrough_headers: Whitelist of inbound header names (case
             insensitive) MCP/GraphQL callers may forward into route calls.
             ``None`` (default) forwards ``authorization`` — each client acts
@@ -137,8 +127,7 @@ class FastAPIMCP:
             standalone-GraphQL-entry tool per route (typed args, ``fields``
             projection, method-derived annotations — per-tool client
             permissions; warns above 50 routes, where the linear catalog
-            overtakes the constant-catalog modes). ``"simple"`` is a
-            deprecated alias for ``graphql``.
+            overtakes the constant-catalog modes).
         include_hidden: Also scan routes with ``include_in_schema=False``.
         exclude_deprecated: Drop routes declared ``deprecated=True`` — a
             config-level silent drop, like the path/tag filters. Routes
@@ -151,16 +140,13 @@ class FastAPIMCP:
         *,
         name: str = "fastapi-mcp-neo API",
         instructions: str | None = None,
-        include: Sequence[str] | None = None,
-        exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
         allow_mutation: bool = True,
-        mode: Literal["graphql", "progressive", "tools", "simple"] = "graphql",
+        mode: Literal["graphql", "progressive", "tools"] = "graphql",
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
         progressive_threshold: int = PROGRESSIVE_THRESHOLD,
-        mutation_include: Sequence[str] | None = None,
         passthrough_headers: Sequence[str] | None = None,
         auth: Any | None = None,
         request_timeout: float | None = 30.0,
@@ -173,14 +159,11 @@ class FastAPIMCP:
         self._progressive_threshold = progressive_threshold
         self._handler = RouterGraphQLHandler(
             app,
-            include=include,
-            exclude=exclude,
             include_tags=include_tags,
             exclude_tags=exclude_tags,
             allow_mutation=allow_mutation,
             include_hidden=include_hidden,
             exclude_deprecated=exclude_deprecated,
-            mutation_include=mutation_include,
             passthrough_headers=passthrough_headers,
             request_timeout=request_timeout,
             max_concurrency=max_concurrency,
@@ -217,27 +200,18 @@ class FastAPIMCP:
 
     def _resolve_mode(
         self,
-        mode: Literal["graphql", "progressive", "tools", "simple"],
+        mode: Literal["graphql", "progressive", "tools"],
     ) -> Literal["graphql", "progressive", "tools"]:
-        if mode == "simple":
-            warnings.warn(
-                'mode="simple" is deprecated; use mode="graphql" (same behavior).',
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            return "graphql"
         if mode not in ("graphql", "progressive", "tools"):
             raise GQLMCPConfigError(
                 f"unknown mode {mode!r}: expected 'graphql', 'progressive', "
-                "'tools' (or the deprecated alias 'simple')"
+                "'tools'"
             )
         return mode
 
     @property
     def resolved_mode(self) -> Literal["graphql", "progressive", "tools"]:
-        """The mode actually in effect — ``"simple"`` (deprecated alias) is
-        already resolved to ``"graphql"`` here, so this never returns it
-        (unlike the ``mode`` constructor argument)."""
+        """The mode actually in effect (always one of the three)."""
         return self._resolved_mode
 
     def _build_mcp(
@@ -395,19 +369,3 @@ class FastAPIMCP:
                 if route.path not in existing:
                     app.router.routes.append(route)
 
-
-class RouterMCP(FastAPIMCP):
-    """Deprecated alias for :class:`FastAPIMCP` — will be removed at 1.0.
-
-    The old name said Router while the class wraps a whole FastAPI app;
-    FastAPIMCP names what it is. Kept as a working subclass so existing
-    imports keep functioning (with a DeprecationWarning)."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        warnings.warn(
-            "RouterMCP is deprecated; use FastAPIMCP (same behavior, "
-            "the class wraps a FastAPI app, not a router).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)

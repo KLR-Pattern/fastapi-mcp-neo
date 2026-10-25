@@ -2,16 +2,21 @@
 
 ## Unreleased
 
-### Deprecated
+### Removed (breaking)
 
 - **Path-glob route filters: `include` / `exclude` / `mutation_include`.**
   Tags are the filter dimension (`include_tags` / `exclude_tags`): they are
   what the whole bridge already speaks (the domain tree, progressive
   discovery, multi-deployment scoping all derive from tags), while paths
   are brittle — refactors move them, and two verbs sharing a path cannot
-  be split. The path filters remain functional this release and warn on
-  use; scope writes with a tag-filtered read-only/fully-writable
+  be split. Scope writes with a tag-filtered read-only/fully-writable
   deployment pair instead of `mutation_include`.
+- **`mode="simple"` alias** — removed with the other compatibility shims;
+  use `mode="graphql"`.
+- **`RouterMCP` class alias** — use `FastAPIMCP`.
+
+No compatibility shims are carried in 0.x: breaking changes land directly
+and this file is the migration channel.
 
 ## 0.15.0 (2026-10-24)
 

@@ -64,17 +64,23 @@ class TestMutationGating:
 
 
 class TestFiltering:
-    def test_include_glob(self):
-        routes, _ = scan(scanner_app(), include=["/items*"])
-        assert {r.path for r in routes} <= {"/items", "/items/{item_id}"}
+    """Tags are the only filter dimension (path globs were removed).
+    scanner_app tags only the two catalog GETs with shop:catalog."""
 
-    def test_exclude_glob(self):
-        routes, _ = scan(scanner_app(), exclude=["/ping", "/raw", "/stream"])
-        assert all(r.path not in {"/ping", "/raw", "/stream"} for r in routes)
+    def test_include_tags_strict_whitelist(self):
+        routes, _ = scan(scanner_app(), include_tags=["shop:*"])
+        assert {r.path for r in routes} == {"/items", "/items/{item_id}"}
 
-    def test_exclude_wins_over_include(self):
-        routes, _ = scan(scanner_app(), include=["/items*"], exclude=["/items/{item_id}"])
-        assert "/items/{item_id}" not in {r.path for r in routes}
+    def test_exclude_tags_drops_tagged(self):
+        routes, _ = scan(scanner_app(), exclude_tags=["shop:*"])
+        assert all(r.tags != ("shop:catalog",) for r in routes)
+        assert "/items" in {r.path for r in routes if r.method == "POST"}  # untagged stays
+
+    def test_exclude_tags_wins_over_include_tags(self):
+        routes, _ = scan(
+            scanner_app(), include_tags=["shop:*", "zzz"], exclude_tags=["zzz"]
+        )
+        assert {r.path for r in routes} == {"/items", "/items/{item_id}"}
 
 
 class Color(Enum):  # non-str Enum tags must be ignored by tag filtering
@@ -136,15 +142,6 @@ class TestTagFiltering:
         )
         assert {r.path for r in routes} == {"/users"}
 
-    def test_tag_filters_and_with_path_filters(self):
-        routes, _ = scan(
-            build_tagged_app(), include=["/users", "/invoices"], include_tags=["analytics"]
-        )
-        assert routes == []
-        routes, _ = scan(
-            build_tagged_app(), include=["/users", "/reports"], include_tags=["iam:*"]
-        )
-        assert {r.path for r in routes} == {"/users"}
 
     def test_enum_tag_ignored(self):
         routes, _ = scan(build_tagged_app())  # no filter: enum-tag route scans fine
@@ -567,8 +564,6 @@ class TestReadiness:
         assert routes_scoped.ready
 
     def test_readiness_respects_filters(self):
-        report = RouterScanner(build_degraded_app(), include=["/clean"]).readiness()
-        assert report.ready
         # Tag filtering runs before mutation gating: POST /users (iam) drops
         # silently, and /untagged (a raw-JSON bridge) is out of the whitelist.
         report = RouterScanner(

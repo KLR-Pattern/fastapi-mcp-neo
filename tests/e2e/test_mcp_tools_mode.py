@@ -130,13 +130,21 @@ class TestExecution:
 
 
 class TestCombination:
-    async def test_include_filter_narrows_the_toolset(self):
-        mcp = FastAPIMCP(
-            users_app(), name="one", mode="tools", include=["/users/{user_id}"]
-        )
+    async def test_tag_filter_narrows_the_toolset(self):
+        app = FastAPI()
+
+        @app.get("/a/{uid}", tags=["alpha"])
+        async def get_a(uid: int) -> dict:
+            return {"uid": uid}
+
+        @app.get("/b/{uid}", tags=["beta"])
+        async def get_b(uid: int) -> dict:
+            return {"uid": uid}
+
+        mcp = FastAPIMCP(app, name="one", mode="tools", include_tags=["alpha"])
         async with Client(mcp.mcp) as client:
             names = sorted(t.name for t in await client.list_tools())
-        assert names == ["get_user"]
+        assert names == ["get_a"]
 
     async def test_no_arg_route_document_is_valid(self):
         """Regression: routes without arguments must not render `ping()`."""

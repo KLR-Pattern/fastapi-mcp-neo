@@ -9,7 +9,7 @@ from tests.support.mcp import http_client, jsonrpc_initialize
 class TestMountTo:
     async def test_mounted_endpoint_serves_mcp(self):
         host = users_app()
-        mcp = FastAPIMCP(host, name="mounted", include=["/users*"])
+        mcp = FastAPIMCP(host, name="mounted")
         mcp.mount_to(host, "/mcp")
         # Same-app mount must disable the invoker's own lifespan management.
         assert mcp.handler.invoker.manage_lifespan is False
@@ -25,7 +25,7 @@ class TestMountTo:
 
     async def test_host_routes_still_work_after_mount(self):
         host = users_app()
-        mcp = FastAPIMCP(host, name="mounted2", include=["/users*"])
+        mcp = FastAPIMCP(host, name="mounted2")
         mcp.mount_to(host, "/mcp")
 
         async with http_client(host, base_url="http://test") as client:

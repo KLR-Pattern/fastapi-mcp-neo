@@ -50,14 +50,11 @@ class RouterGraphQLHandler:
         self,
         app: Any,
         *,
-        include: Sequence[str] | None = None,
-        exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
         allow_mutation: bool = True,
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
-        mutation_include: Sequence[str] | None = None,
         passthrough_headers: Sequence[str] | None = None,
         request_timeout: float | None = 30.0,
         max_concurrency: int | None = 16,
@@ -101,14 +98,11 @@ class RouterGraphQLHandler:
         self._types = TypeBuilder()
         routes, skips = RouterScanner(
             app,
-            include=include,
-            exclude=exclude,
             include_tags=include_tags,
             exclude_tags=exclude_tags,
             allow_mutation=allow_mutation,
             include_hidden=include_hidden,
             exclude_deprecated=exclude_deprecated,
-            mutation_include=mutation_include,
         ).scan(self._types)
         self._builder = SchemaBuilder(routes, self._invoker, self._types)
         self._schema = self._builder.build()

@@ -436,8 +436,7 @@ tool annotations), the analytics dashboard gets a read-only deployment
 
 Nothing switches implicitly: `graphql` warns above
 `progressive_threshold` (default 25), `tools` warns above 50 routes (the
-linear catalog overtakes the constant modes there). `"simple"` is a
-deprecated alias for `graphql`.
+linear catalog overtakes the constant modes there).
 
 ### What the agent sees (connection lifecycle)
 

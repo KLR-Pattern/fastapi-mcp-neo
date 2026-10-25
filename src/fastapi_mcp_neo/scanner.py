@@ -11,7 +11,6 @@ from __future__ import annotations
 import fnmatch
 import inspect
 import logging
-import warnings
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -624,36 +623,18 @@ class RouterScanner:
         self,
         app: FastAPI,
         *,
-        include: Sequence[str] | None = None,
-        exclude: Sequence[str] | None = None,
         include_tags: Sequence[str] | None = None,
         exclude_tags: Sequence[str] | None = None,
         allow_mutation: bool = True,
         include_hidden: bool = False,
         exclude_deprecated: bool = False,
-        mutation_include: Sequence[str] | None = None,
     ) -> None:
         self._app = app
-        if include is not None or exclude is not None or mutation_include is not None:
-            warnings.warn(
-                "path-glob filters (include/exclude/mutation_include) are "
-                "deprecated: filter by tags instead (include_tags/"
-                "exclude_tags). Paths are a brittle dimension - refactors "
-                "move them, and two verbs on one path cannot be split - "
-                "while tags are the semantic dimension the whole bridge "
-                "(domain tree, progressive discovery) already speaks. The "
-                "path filters remain functional this release.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-        self._include = include
-        self._exclude = exclude
         self._include_tags = include_tags
         self._exclude_tags = exclude_tags
         self._allow_mutation = allow_mutation
         self._include_hidden = include_hidden
         self._exclude_deprecated = exclude_deprecated
-        self._mutation_include = mutation_include
 
     def scan(
         self, types: TypeBuilder | None = None
@@ -678,12 +659,7 @@ class RouterScanner:
                 )
             method = verbs[0]
 
-            if self._exclude and _matches(r.path, self._exclude):
-                continue
-            if self._include is not None and not _matches(r.path, self._include):
-                continue
-
-            # Tag filters mirror path filters: config-level, silent drop.
+            # Tag filters: config-level, silent drop.
             # OpenAPI allows Enum tags; only string tags participate (the
             # same rule as domain grouping in _build_route_info).
             route_tags = tuple(t for t in (r.tags or ()) if isinstance(t, str))
@@ -707,20 +683,6 @@ class RouterScanner:
                 )
                 continue
 
-            if (
-                method in _MUTATION_VERBS
-                and self._mutation_include is not None
-                and not _matches(r.path, self._mutation_include)
-            ):
-                skips.append(
-                    SkipRecord(
-                        r.path, method,
-                        "mutation endpoint not matched by mutation_include globs "
-                        "(widen the pattern, or pass mutation_include=None to allow all)",
-                        tags=route_tags,
-                    )
-                )
-                continue
 
             if not r.include_in_schema and not self._include_hidden:
                 skips.append(

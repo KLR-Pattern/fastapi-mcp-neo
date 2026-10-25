@@ -1,5 +1,5 @@
 """FastAPIMCP server behavior: mode resolution (auto/simple/progressive),
-mutation whitelists, tag scoping, the RouterMCP deprecation alias, and
+tag scoping, and
 deployment-scoped readiness — config altitude, with the big-app and
 multi-domain factories from tests.support.
 """
@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastmcp import Client
 from pydantic import BaseModel
 
-from fastapi_mcp_neo import FastAPIMCP, RouterMCP
+from fastapi_mcp_neo import FastAPIMCP
 from fastapi_mcp_neo.handler import GQLMCPConfigError
 from tests.support.apps import big_app, multi_domain_app, users_app
 from tests.support.mcp import tool_payload
@@ -90,54 +90,20 @@ class TestServerBehavior:
         assert mcp.resolved_mode == "graphql"
         assert "30 routes" in caplog.text
 
-    async def test_warning_respects_include_filter(self, caplog):
+    async def test_warning_respects_tag_filter(self, caplog):
         """Route count for the warning is the count that ENTERS the schema
-        (filters applied), not the raw app.route count. Path globs are
-        deprecated (tags are the dimension) but functional this release."""
-        with pytest.warns(DeprecationWarning, match="include_tags"):
-            with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
-                mcp = FastAPIMCP(
-                    big_app(30), name="filtered", include=["/thing0", "/thing1", "/thing2"]
-                )
-        assert len(mcp.handler.routes) == 3
+        (tag filters applied), not the raw app.route count."""
+        with caplog.at_level("WARNING", logger="fastapi_mcp_neo.mcp.server"):
+            mcp = FastAPIMCP(
+                multi_domain_app(), name="filtered", include_tags=["billing*"]
+            )
+        assert 0 < len(mcp.handler.routes) < len(multi_domain_app().routes)
         assert "Consider mode=" not in caplog.text
-
-    async def test_path_glob_filters_warn_deprecation(self):
-        with pytest.warns(DeprecationWarning, match="path-glob filters"):
-            FastAPIMCP(users_app(), name="dep", exclude=["/x"])
 
     async def test_domains_registry_built(self):
         mcp = FastAPIMCP(users_app(), name="test-api")
         summary = mcp.domains.summary()
         assert summary and summary[0]["name"] == "iam"
-
-
-class TestMutationWhitelist:
-    async def test_mutation_include_filters_writes(self):
-        app = users_app()  # POST /users is the only write route
-
-        mcp = FastAPIMCP(
-            app,
-            name="wl",
-            allow_mutation=True,
-            mutation_include=["/nope*"],
-        )
-        sdl = mcp.handler.get_sdl()
-        assert "Mutation" not in sdl  # no write route survived the whitelist
-
-        mcp2 = FastAPIMCP(
-            app,
-            name="wl2",
-            allow_mutation=True,
-            mutation_include=["/users"],
-        )
-        assert "create_user" in mcp2.handler.get_sdl()
-
-    async def test_reads_unaffected_by_whitelist(self):
-        app = users_app()
-        mcp = FastAPIMCP(app, name="wl3", allow_mutation=True, mutation_include=["/none"])
-        sdl = mcp.handler.get_sdl()
-        assert "list_users" in sdl
 
 
 class TestTagFiltering:
@@ -213,19 +179,6 @@ class TestTagFiltering:
             result = tool_payload(await client.call_tool("get_schema", {}))
             sdl = result["data"]["sdl"]
             assert "list_invoices" in sdl and "list_users" not in sdl
-
-
-class TestDeprecatedAlias:
-    def test_router_mcp_alias_warns_and_works(self):
-        with pytest.warns(DeprecationWarning, match="FastAPIMCP"):
-            mcp = RouterMCP(users_app(), name="alias")
-        assert isinstance(mcp, FastAPIMCP)
-        assert mcp.resolved_mode == "graphql"
-
-    def test_simple_mode_alias_warns_and_resolves_graphql(self):
-        with pytest.warns(DeprecationWarning, match='mode="simple"'):
-            mcp = FastAPIMCP(users_app(), name="alias", mode="simple")
-        assert mcp.resolved_mode == "graphql"
 
 
 class TestReadiness:
