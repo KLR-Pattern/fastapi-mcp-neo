@@ -17,8 +17,9 @@ aligns: schema placement (Query/Mutation root), tools-mode annotations
 physical HTTP verb is untouched — a ``POST`` route stays a ``POST`` on
 the wire.
 
-Usage (the marker sits BELOW the route decorator, closest to the
-function):
+Usage (either side of the route decorator works — both orders verified;
+keep it ADJACENT, any in-between decorator that replaces the function
+object would drop the marker):
 
     from fastapi_mcp_neo import mcp_mutation, mcp_query
 

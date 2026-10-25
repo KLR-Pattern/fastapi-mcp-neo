@@ -456,11 +456,14 @@ async def search(q: SearchQuery) -> Hits: ...
 async def flush() -> Ok: ...
 ```
 
-The marker sits BELOW the route decorator and flips the classification at
-scan time, so every consumer aligns: schema placement (Query/Mutation
-root), tools-mode annotations, and the `allow_mutation` gate (a
-read-only deployment keeps `@mcp_query` POSTs). The physical verb is
-untouched — the route still executes via POST/GET on the wire.
+The marker may sit on either side of the route decorator (both orders
+verified); the rule is adjacency — any decorator in between that
+replaces the function object (some cache/log wrappers do) would drop the
+marker silently. It flips the classification at scan time, so every
+consumer aligns: schema placement (Query/Mutation root), tools-mode
+annotations, and the `allow_mutation` gate (a read-only deployment keeps
+`@mcp_query` POSTs). The physical verb is untouched — the route still
+executes via POST/GET on the wire.
 
 ### What the agent sees (connection lifecycle)
 
