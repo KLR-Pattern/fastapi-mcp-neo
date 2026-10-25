@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.19.0 (2026-10-25)
+
+### Fixed
+
+- **Parameter-collision skips are now decided at SCAN time** (the audited
+  channel): the skip lands in `readiness().skips`, the route leaves the
+  route list, and every downstream consumer stays consistent. The
+  schema-build-time patch it replaces had three regressions — tools mode
+  crashed with KeyError when a whole domain vanished, the skipped route
+  kept its name registered and could still kill same-named healthy
+  siblings, and readiness/`list_domains` advertised routes that no longer
+  existed. A domain whose every route was skipped drops out of the group
+  tree (no empty root types); misleading "add a GET route" guidance when
+  GETs exist but were all skipped is gone with the same move.
+- **Streaming responses that fail mid-body** (typed promise, streaming
+  reality) surfaced as a bare JSONDecodeError with no context. Now a
+  route-contextual field error (truncated-body, http_status 502); the
+  mid-stream exception text never reaches the agent.
+- **`debug=True` tracebacks** embedded in the 500 body no longer reach
+  the GraphQL error message (reduced to the generic line); network
+  parity is preserved, agent-side leakage is not.
+- **Swallowed unhandled exceptions now leave a server trace** — the
+  invoker logs route, method and status at ERROR before raising the
+  sanitized field error (in-process mode used to be LESS diagnosable
+  than uvicorn).
+- **Heterogeneous-tuple degradation is audible** like unions:
+  `degraded_fields` entry + reason; bare lowercase `tuple` gets the same
+  verdict as `typing.Tuple`.
+
+### Changed
+
+- Removed dead `_Group.prune()/is_empty()` (superseded by the
+  empty-branch `None` propagation).
+
+## 0.18.0 (2026-10-25)
+
+### Fixed
+
+- **Unhandled route exceptions no longer leak.** httpx's ASGITransport
+  defaulted to propagating app exceptions, so a route's raw error text
+  became the GraphQL error message — while the same app over real HTTP
+  answers 500 "Internal Server Error" with no detail. The transport now
+  runs with raise_app_exceptions=False; parity pinned (message,
+  extensions, no-leak, sibling survival, e2e isError).
+- **Heterogeneous fixed tuples no longer silently mistype.**
+  tuple[Item, int] mapped as [Item!] — the collection mapping took the
+  first type argument, so the other positions vanished from the schema
+  with no skip and no degraded-fields record. Differing-position tuples
+  (and empty tuples) now bridge as the JSON scalar like unions;
+  variadic and all-same tuples stay lists (pydantic emits tuples as
+  arrays, so those are wire-accurate).
+
+### Changed
+
+- **A route whose parameters collide on one GraphQL argument now skips
+  that route instead of failing the whole mount** — degrade-and-notify,
+  consistent with bad fields degrading and bad routes skipping: the
+  warning names both parameters and the fix; a group whose every route
+  was skipped drops out so an empty root type is never produced.
+
+### Added
+
+- Scenario pins migrated from fastapi_mcp's and fastmcp's from_openapi
+  test suites: nested body models with custom scalars end to end,
+  UUID/datetime response serialization, whole-None list query params,
+  responses={...} decorator smoke, model inheritance, SecretStr fields,
+  raw text/plain bodies.
+
+## 0.17.0 (2026-10-25)
+
+### Added
+
+- **`@mcp_query` / `@mcp_mutation`: force a route's read/write
+  classification.** The verb default breaks on POST-for-read APIs
+  (payload bodies beat query strings) and GET-with-side-effects routes;
+  the marker (either side of the route decorator, kept adjacent) flips
+  the classification at scan time — schema placement, tools-mode
+  annotations, and the allow_mutation gate all align, while the physical
+  HTTP verb on the wire is untouched.
+
 ## 0.16.0 (2026-10-25)
 
 ### Added
