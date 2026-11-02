@@ -13,47 +13,168 @@
     "iters": 300,
     "runs": 3,
     "first_call_samples": 20,
-    "measurement": "same route (GET /api/notes, 20 items, 4 fields) through four paths; both direct_asgi and the bridge's invoker ride httpx ASGITransport, so direct_asgi vs graphql_cached isolates GraphQL orchestration. graphql_first times the first execute() per fresh handler (per-document parse+validate; scan/build excluded). mcp_tool_call is the fastmcp in-memory client chain, matching run_ours.py latency."
+    "tree_depths": [
+      10,
+      15,
+      20
+    ],
+    "measurement": "flat case: GET /api/notes (20 items, 4 fields). recursive case: GET /tree/1?depth=N \u2014 a self-referencing Node chain; the agent's document is 3 levels deep, true-depth unroll expands it to the data's depth at compile time and the response carries the whole subtree. Both direct_asgi and the bridge's invoker ride httpx ASGITransport, so direct_asgi vs graphql_cached isolates GraphQL orchestration. graphql_first times the first execute() per fresh handler (per-document parse+validate+unroll; scan/build/invoker-start excluded). mcp_tool_call is the fastmcp in-memory client chain, matching run_ours.py latency."
   },
-  "latency": {
+  "flat": {
     "direct_asgi": {
       "p50_ms": 0.199,
-      "p95_ms": 0.237,
+      "p95_ms": 0.224,
       "p50_spread": [
         0.199,
-        0.198,
-        0.202
+        0.197,
+        0.2
       ]
     },
     "graphql_cached": {
-      "p50_ms": 0.556,
-      "p95_ms": 0.64,
+      "p50_ms": 0.567,
+      "p95_ms": 0.623,
       "p50_spread": [
-        0.554,
-        0.556,
-        0.563
+        0.567,
+        0.567,
+        0.564
       ]
     },
     "graphql_first": {
-      "p50_ms": 1.15,
-      "p95_ms": 1.698,
+      "p50_ms": 1.203,
+      "p95_ms": 1.879,
       "p50_spread": [
-        1.279,
-        1.15,
-        1.133
+        1.203,
+        1.203,
+        1.158
       ]
     },
     "mcp_tool_call": {
-      "p50_ms": 1.339,
-      "p95_ms": 1.592,
+      "p50_ms": 1.347,
+      "p95_ms": 1.609,
       "p50_spread": [
-        1.332,
-        1.339,
-        1.341
+        1.345,
+        1.347,
+        1.348
       ]
     }
   },
-  "overhead": {
-    "graphql_layer_vs_direct_ms": 0.357
-  }
+  "recursive": [
+    {
+      "depth": 10,
+      "direct_asgi": {
+        "p50_ms": 0.212,
+        "p95_ms": 0.239,
+        "p50_spread": [
+          0.216,
+          0.212,
+          0.21
+        ]
+      },
+      "graphql_cached": {
+        "p50_ms": 0.471,
+        "p95_ms": 0.664,
+        "p50_spread": [
+          0.473,
+          0.471,
+          0.47
+        ]
+      },
+      "graphql_first": {
+        "p50_ms": 8.42,
+        "p95_ms": 9.758,
+        "p50_spread": [
+          8.42,
+          8.38,
+          8.445
+        ]
+      },
+      "mcp_tool_call": {
+        "p50_ms": 1.283,
+        "p95_ms": 1.599,
+        "p50_spread": [
+          1.283,
+          1.283,
+          1.275
+        ]
+      }
+    },
+    {
+      "depth": 15,
+      "direct_asgi": {
+        "p50_ms": 0.217,
+        "p95_ms": 0.242,
+        "p50_spread": [
+          0.219,
+          0.217,
+          0.216
+        ]
+      },
+      "graphql_cached": {
+        "p50_ms": 0.557,
+        "p95_ms": 0.753,
+        "p50_spread": [
+          0.556,
+          0.557,
+          0.56
+        ]
+      },
+      "graphql_first": {
+        "p50_ms": 8.548,
+        "p95_ms": 9.668,
+        "p50_spread": [
+          8.548,
+          8.515,
+          8.94
+        ]
+      },
+      "mcp_tool_call": {
+        "p50_ms": 1.393,
+        "p95_ms": 1.717,
+        "p50_spread": [
+          1.416,
+          1.39,
+          1.393
+        ]
+      }
+    },
+    {
+      "depth": 20,
+      "direct_asgi": {
+        "p50_ms": 0.226,
+        "p95_ms": 0.256,
+        "p50_spread": [
+          0.231,
+          0.226,
+          0.222
+        ]
+      },
+      "graphql_cached": {
+        "p50_ms": 0.636,
+        "p95_ms": 0.811,
+        "p50_spread": [
+          0.636,
+          0.636,
+          0.634
+        ]
+      },
+      "graphql_first": {
+        "p50_ms": 8.632,
+        "p95_ms": 9.645,
+        "p50_spread": [
+          8.559,
+          8.684,
+          8.632
+        ]
+      },
+      "mcp_tool_call": {
+        "p50_ms": 1.48,
+        "p95_ms": 1.799,
+        "p50_spread": [
+          1.505,
+          1.48,
+          1.469
+        ]
+      }
+    }
+  ]
 }

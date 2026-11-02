@@ -1,16 +1,24 @@
 """Execution overhead of the bridge layers vs calling the route directly.
 
 Answers "beyond token savings, what does the GraphQL layer cost per
-query?" (fastmcp discussion #5981, Q4). Three paths over the SAME route
-of shared_app, 20-item response:
+query?" (fastmcp discussion #5981, Q4). Four paths over the SAME routes:
 
-1. direct_asgi      — httpx ASGITransport straight at GET /api/notes
+1. direct_asgi      — httpx ASGITransport straight at the route
 2. graphql_cached   — RouterGraphQLHandler.execute, steady state
                       (document LRU cache hit: parse+validate skipped)
 3. graphql_first    — first execute on a fresh handler (one-time
                       parse+validate+recursive-stamp cost per document)
 4. mcp_tool_call    — full chain: fastmcp in-memory Client ->
                       graphql_query tool -> handler
+
+Two cases:
+
+- flat: shared_app's GET /api/notes, 20-item list response.
+- recursive: a self-referencing Node chain at depth 10/15/20 — the
+  true-depth unroll edge. The agent writes a SHALLOW document (3 levels);
+  the bridge expands it to the data's real depth, so the response carries
+  the whole subtree. First-call pays the unroll+validate of the EXPANDED
+  document once; steady state executes the expanded document.
 
 Both sides of (1) vs (2) ride the same httpx ASGITransport — the bridge's
 invoker calls routes through it too — so the delta between them is pure
@@ -32,8 +40,10 @@ import time
 from datetime import date
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastmcp import Client
 from httpx import ASGITransport, AsyncClient
+from pydantic import BaseModel
 from shared_app import NOTES, build_app
 
 from fastapi_mcp_neo import FastAPIMCP, RouterGraphQLHandler
@@ -43,9 +53,17 @@ OUT = Path(__file__).parent / "results_direct_vs_gql.json"
 # Same shape on every path: all 20 notes, four fields each.
 NOTES_QUERY_FULL = "{ notes { mine { list_notes { id title body owner } } } }"
 
+# The agent's document stays 3 levels deep whatever the data depth is;
+# the bridge's true-depth unroll expands it at compile time.
+TREE_QUERY = (
+    "{ tree { get_tree(root_id: 1, depth: {depth}) "
+    "{ id label children { id label children { id label } } } } }"
+)
+
 ITERS = 300
 RUNS = 3
 FIRST_CALL_SAMPLES = 20  # fresh-handler first executes (scan/build excluded)
+TREE_DEPTHS = [10, 15, 20]
 
 
 def pct(sorted_ms: list[float], p: float) -> float:
@@ -76,82 +94,175 @@ def summarize(runs: list[list[float]]) -> dict:
 
 
 async def time_calls(coro_factory) -> list[float]:
-    """Time ITERS awaited calls; each call must return a 20-item result."""
+    """Time ITERS awaited calls; coro_factory itself asserts correctness."""
     times = []
     for _ in range(ITERS):
         t0 = time.perf_counter()
-        n = await coro_factory()
+        await coro_factory()
         times.append((time.perf_counter() - t0) * 1000)
-        assert n == len(NOTES), f"expected {len(NOTES)} items, got {n}"
     return sorted(times)
 
 
-async def main() -> dict:
-    import importlib.metadata as md
+async def run_direct(call) -> list[list[float]]:
+    """(1) direct ASGI call — the baseline the question asks about."""
+    return [await time_calls(call) for _ in range(RUNS)]
 
-    app = build_app(5)
 
-    # ---- correctness first: all four paths return the same 20 notes ----
-    direct = AsyncClient(
-        transport=ASGITransport(app=app, raise_app_exceptions=False),
-        base_url="http://bench.local",
-    )
-    handler = RouterGraphQLHandler(app)
-    first = await handler.execute(NOTES_QUERY_FULL)
-    assert "errors" not in first, first
-    http = await direct.get("/api/notes")
-    assert http.status_code == 200 and len(http.json()) == len(NOTES)
-    assert (
-        len(first["data"]["notes"]["mine"]["list_notes"]) == len(NOTES)
-    ), "graphql and direct paths disagree"
+async def run_gql_cached(handler: RouterGraphQLHandler, call) -> list[list[float]]:
+    """(2) GraphQL layer, steady state (document cache warm)."""
+    return [await time_calls(call) for _ in range(RUNS)]
 
-    # ---- (1) direct ASGI call — the baseline the question asks about ----
-    runs_direct = [
-        await time_calls(lambda: _direct_notes(direct)) for _ in range(RUNS)
-    ]
 
-    # ---- (2) GraphQL layer, steady state (document cache warm) ----
-    runs_cached = [
-        await time_calls(lambda: _gql_notes(handler)) for _ in range(RUNS)
-    ]
+async def run_gql_first(build_handler, call) -> list[list[float]]:
+    """(3) first execute on a fresh handler: the one-time cost.
 
-    # ---- (3) first execute on a fresh handler: the one-time cost ----
-    # Handler construction (scan+build) is OUTSIDE the timer — this is the
-    # per-document compile a caller pays once, then path (2) forever after.
-    runs_first: list[list[float]] = []
+    Handler construction (scan+build) and invoker startup (lifespan +
+    client) are OUTSIDE the timer — the per-document compile a caller
+    pays once, then path (2) forever after.
+    """
+    runs = []
     for _ in range(RUNS):
         samples = []
         for _ in range(FIRST_CALL_SAMPLES):
-            h = RouterGraphQLHandler(app)  # fresh cache per sample
-            await h.invoker.start()  # lifespan+client up front: not a per-document cost
+            h = build_handler()  # fresh cache per sample
+            await h.invoker.start()
             t0 = time.perf_counter()
-            n = await _gql_notes(h)
+            await call(h)
             samples.append((time.perf_counter() - t0) * 1000)
-            assert n == len(NOTES)
             await h.aclose()
-        runs_first.append(sorted(samples))
+        runs.append(sorted(samples))
+    return runs
 
-    # ---- (4) full MCP chain (same stack as run_ours.py latency) ----
-    mcp = FastAPIMCP(app, name="bench", allow_mutation=True, mode="graphql")
-    runs_mcp: list[list[float]] = []
+
+async def run_mcp(mcp: FastAPIMCP, query: str, check_payload) -> list[list[float]]:
+    """(4) full MCP chain (same stack as run_ours.py latency)."""
+    runs = []
     for _ in range(RUNS):
         async with Client(mcp.mcp) as client:
             times = []
             for _ in range(ITERS):
                 t0 = time.perf_counter()
-                res = await client.call_tool("graphql_query", {"query": NOTES_QUERY_FULL})
+                res = await client.call_tool("graphql_query", {"query": query})
                 times.append((time.perf_counter() - t0) * 1000)
                 # wire shape: {"data": <handler.execute result>}
                 inner = json.loads(res.content[0].text)["data"]
                 assert "errors" not in inner, inner
-                n = len(inner["data"]["notes"]["mine"]["list_notes"])
-                assert n == len(NOTES)
-            runs_mcp.append(sorted(times))
+                check_payload(inner["data"])
+            runs.append(sorted(times))
+    return runs
 
+
+# ------------------------------------------------------------- the two cases
+
+async def _direct_notes(client: AsyncClient) -> None:
+    resp = await client.get("/api/notes")
+    assert resp.status_code == 200
+    assert len(resp.json()) == len(NOTES)
+
+
+async def _gql_notes(h: RouterGraphQLHandler) -> None:
+    payload = await h.execute(NOTES_QUERY_FULL)
+    assert "errors" not in payload, payload
+    assert len(payload["data"]["notes"]["mine"]["list_notes"]) == len(NOTES)
+
+
+def _check_notes(data: dict) -> None:
+    assert len(data["notes"]["mine"]["list_notes"]) == len(NOTES)
+
+
+class TreeNode(BaseModel):
+    """A chain tree node — direct self-reference, unrolls to true depth."""
+
+    id: int
+    label: str
+    children: list[TreeNode] = []
+
+
+TreeNode.model_rebuild()
+
+
+def build_chain(depth: int) -> TreeNode:
+    """A linear chain: root -> child -> ... (depth nodes, depth-1 levels)."""
+    node = TreeNode(id=depth, label=f"n{depth}")
+    for d in range(depth - 1, 0, -1):
+        node = TreeNode(id=d, label=f"n{d}", children=[node])
+    return node
+
+
+def build_tree_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/tree/{root_id}", response_model=TreeNode, tags=["tree"])
+    async def get_tree(root_id: int, depth: int = 15) -> TreeNode:
+        """Fetch a chain tree of the requested depth."""
+        return build_chain(depth)
+
+    return app
+
+
+def chain_levels(node: dict) -> int:
+    """Nested children levels under the root (depth 15 -> 14)."""
+    levels = 0
+    while node.get("children"):
+        node = node["children"][0]
+        levels += 1
+    return levels
+
+
+async def measure_tree_case(depth: int) -> dict:
+    """All four paths over the chain-tree route at one depth.
+
+    Helpers live in this function's scope on purpose: each depth gets its
+    own app, clients and closures, nothing escapes the call.
+    """
+    query = TREE_QUERY.replace("{depth}", str(depth))
+    app = build_tree_app()
+    direct = AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://bench.local",
+    )
+    handler = RouterGraphQLHandler(app)
+
+    async def _direct_tree() -> None:
+        resp = await direct.get("/tree/1", params={"depth": depth})
+        assert resp.status_code == 200
+        assert chain_levels(resp.json()) == depth - 1
+
+    async def _gql_tree(h: RouterGraphQLHandler) -> None:
+        payload = await h.execute(query)
+        assert "errors" not in payload, payload
+        assert chain_levels(payload["data"]["tree"]["get_tree"]) == depth - 1
+
+    def _check_tree(data: dict) -> None:
+        assert chain_levels(data["tree"]["get_tree"]) == depth - 1
+
+    # correctness first: the shallow document really unrolls
+    await _direct_tree()
+    await _gql_tree(handler)
+
+    mcp = FastAPIMCP(app, name="bench", allow_mutation=True, mode="graphql")
+    row = {
+        "depth": depth,
+        "direct_asgi": summarize(await run_direct(_direct_tree)),
+        "graphql_cached": summarize(
+            await run_gql_cached(handler, lambda: _gql_tree(handler))
+        ),
+        "graphql_first": summarize(
+            await run_gql_first(
+                lambda: RouterGraphQLHandler(app), lambda h: _gql_tree(h)
+            )
+        ),
+        "mcp_tool_call": summarize(await run_mcp(mcp, query, _check_tree)),
+    }
     await handler.aclose()
     await direct.aclose()
+    return row
 
-    results = {
+
+async def main() -> dict:
+    import importlib.metadata as md
+
+    results: dict = {
         "method": {
             "hardware": cpu_name(),
             "python": platform.python_version(),
@@ -163,53 +274,72 @@ async def main() -> dict:
             "iters": ITERS,
             "runs": RUNS,
             "first_call_samples": FIRST_CALL_SAMPLES,
+            "tree_depths": TREE_DEPTHS,
             "measurement": (
-                "same route (GET /api/notes, 20 items, 4 fields) through four "
-                "paths; both direct_asgi and the bridge's invoker ride httpx "
-                "ASGITransport, so direct_asgi vs graphql_cached isolates "
-                "GraphQL orchestration. graphql_first times the first "
-                "execute() per fresh handler (per-document parse+validate; "
-                "scan/build excluded). mcp_tool_call is the fastmcp "
-                "in-memory client chain, matching run_ours.py latency."
+                "flat case: GET /api/notes (20 items, 4 fields). recursive "
+                "case: GET /tree/1?depth=N — a self-referencing Node chain; "
+                "the agent's document is 3 levels deep, true-depth unroll "
+                "expands it to the data's depth at compile time and the "
+                "response carries the whole subtree. Both direct_asgi and "
+                "the bridge's invoker ride httpx ASGITransport, so "
+                "direct_asgi vs graphql_cached isolates GraphQL "
+                "orchestration. graphql_first times the first execute() "
+                "per fresh handler (per-document parse+validate+unroll; "
+                "scan/build/invoker-start excluded). mcp_tool_call is the "
+                "fastmcp in-memory client chain, matching run_ours.py "
+                "latency."
             ),
-        },
-        "latency": {
-            "direct_asgi": summarize(runs_direct),
-            "graphql_cached": summarize(runs_cached),
-            "graphql_first": summarize(runs_first),
-            "mcp_tool_call": summarize(runs_mcp),
-        },
-        "overhead": {
-            # derived, rounded from the summarized p50s above
-            "graphql_layer_vs_direct_ms": None,  # filled after summarize
-        },
+        }
     }
-    results["overhead"]["graphql_layer_vs_direct_ms"] = round(
-        results["latency"]["graphql_cached"]["p50_ms"]
-        - results["latency"]["direct_asgi"]["p50_ms"],
-        3,
+
+    # ============================ flat case =============================
+    print("== flat (GET /api/notes, 20 items) ==")
+    app = build_app(5)
+    direct = AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://bench.local",
     )
+    handler = RouterGraphQLHandler(app)
+    first = await handler.execute(NOTES_QUERY_FULL)
+    assert "errors" not in first, first
+    http = await direct.get("/api/notes")
+    assert http.status_code == 200 and len(http.json()) == len(NOTES)
+    assert len(first["data"]["notes"]["mine"]["list_notes"]) == len(NOTES)
+
+    mcp = FastAPIMCP(app, name="bench", allow_mutation=True, mode="graphql")
+    results["flat"] = {
+        "direct_asgi": summarize(await run_direct(lambda: _direct_notes(direct))),
+        "graphql_cached": summarize(
+            await run_gql_cached(handler, lambda: _gql_notes(handler))
+        ),
+        "graphql_first": summarize(
+            await run_gql_first(lambda: RouterGraphQLHandler(app), lambda h: _gql_notes(h))
+        ),
+        "mcp_tool_call": summarize(
+            await run_mcp(mcp, NOTES_QUERY_FULL, _check_notes)
+        ),
+    }
+    await handler.aclose()
+    await direct.aclose()
+
+    # ========================== recursive case ===========================
+    results["recursive"] = []
+    for depth in TREE_DEPTHS:
+        print(f"== recursive (chain depth {depth}, document 3 levels) ==")
+        results["recursive"].append(await measure_tree_case(depth))
 
     OUT.write_text(json.dumps(results, indent=2) + "\n")
-    print(json.dumps(results["latency"], indent=2))
-    print(
-        f"\nGraphQL layer overhead (steady state, vs direct ASGI): "
-        f"{results['overhead']['graphql_layer_vs_direct_ms']:+.3f} ms/query"
-    )
-    print(f"written to {OUT}")
+
+    def show(name: str, row: dict) -> None:
+        print(f"  {name:16s} " + "  ".join(
+            f"{k}={v['p50_ms']:.3f}ms" for k, v in row.items() if isinstance(v, dict)
+        ))
+
+    show("flat", results["flat"])
+    for row in results["recursive"]:
+        show(f"depth {row['depth']}", {k: v for k, v in row.items() if k != "depth"})
+    print(f"\nwritten to {OUT}")
     return results
-
-
-async def _direct_notes(client: AsyncClient) -> int:
-    resp = await client.get("/api/notes")
-    assert resp.status_code == 200
-    return len(resp.json())
-
-
-async def _gql_notes(h: RouterGraphQLHandler) -> int:
-    payload = await h.execute(NOTES_QUERY_FULL)
-    assert "errors" not in payload, payload
-    return len(payload["data"]["notes"]["mine"]["list_notes"])
 
 
 if __name__ == "__main__":

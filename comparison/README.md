@@ -119,6 +119,32 @@ last row cross-checks the table above: 1.34 vs 1.39 ms on a re-run day,
 same stack. On any route that touches a database these are noise; the
 economy that matters for agents is turns.
 
+### Recursive depth — the true-depth unroll edge (same script)
+
+A self-referencing `Node` chain (`GET /tree/1?depth=N`): the agent's
+document stays **3 levels deep**, the bridge expands it to the data's
+real depth at compile time, and the response carries the whole subtree.
+
+| case | direct ASGI | GraphQL steady | GraphQL first | full MCP chain |
+|---|---|---|---|---|
+| flat list, 20 items | 0.20 ms | 0.57 ms | 1.20 ms | 1.35 ms |
+| chain depth 10 | 0.21 ms | 0.47 ms | **8.42 ms** | 1.28 ms |
+| chain depth 15 | 0.22 ms | 0.56 ms | **8.55 ms** | 1.39 ms |
+| chain depth 20 | 0.23 ms | 0.64 ms | **8.63 ms** | 1.48 ms |
+
+- **Steady state barely moves with depth** (0.47 → 0.64 ms): once
+  compiled, the expanded document executes like any other — recursion is
+  not a per-request cost.
+- The one-time compile is the edge: **~8 ms on first execute** (unroll +
+  validate of the expanded document) vs ~1.2 ms for a flat document.
+  Paid once per distinct document; repeats hit the cache.
+- 10 → 20 depth adds only ~0.2 ms to that compile — the fixed part
+  dominates, the per-level cost is small.
+- direct stays flat too: deeper JSON, still a tiny payload.
+
+One line: true-depth recursion costs at **compile time**, not at request
+time.
+
 ## Error semantics
 
 One request that mixes a good field (stats) with a missing id (note 9999):
