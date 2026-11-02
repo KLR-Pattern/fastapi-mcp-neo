@@ -1,0 +1,59 @@
+{
+  "method": {
+    "hardware": "13th Gen Intel(R) Core(TM) i5-13500H",
+    "python": "3.13.13",
+    "date": "2026-11-02",
+    "versions": {
+      "fastapi-mcp-neo": "0.19.0",
+      "fastmcp": "4.0.10",
+      "graphql-core": "3.3.0",
+      "fastapi": "0.142.2",
+      "httpx": "0.28.1"
+    },
+    "iters": 300,
+    "runs": 3,
+    "first_call_samples": 20,
+    "measurement": "same route (GET /api/notes, 20 items, 4 fields) through four paths; both direct_asgi and the bridge's invoker ride httpx ASGITransport, so direct_asgi vs graphql_cached isolates GraphQL orchestration. graphql_first times the first execute() per fresh handler (per-document parse+validate; scan/build excluded). mcp_tool_call is the fastmcp in-memory client chain, matching run_ours.py latency."
+  },
+  "latency": {
+    "direct_asgi": {
+      "p50_ms": 0.199,
+      "p95_ms": 0.237,
+      "p50_spread": [
+        0.199,
+        0.198,
+        0.202
+      ]
+    },
+    "graphql_cached": {
+      "p50_ms": 0.556,
+      "p95_ms": 0.64,
+      "p50_spread": [
+        0.554,
+        0.556,
+        0.563
+      ]
+    },
+    "graphql_first": {
+      "p50_ms": 1.15,
+      "p95_ms": 1.698,
+      "p50_spread": [
+        1.279,
+        1.15,
+        1.133
+      ]
+    },
+    "mcp_tool_call": {
+      "p50_ms": 1.339,
+      "p95_ms": 1.592,
+      "p50_spread": [
+        1.332,
+        1.339,
+        1.341
+      ]
+    }
+  },
+  "overhead": {
+    "graphql_layer_vs_direct_ms": 0.357
+  }
+}

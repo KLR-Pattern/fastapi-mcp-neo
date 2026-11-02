@@ -100,6 +100,25 @@ net out within noise. Either way, real agent cost is dominated by
 **turns** — each turn includes LLM reasoning, seconds at a time — so
 "1 turn vs 2 turns" dwarfs a 0.02 ms gap.
 
+### Overhead vs calling the route directly (`bench/run_direct_vs_gql.py`)
+
+The other half of the latency question: what the bridge itself costs over
+a plain call to the endpoint. Same route, 20-item response, four paths
+(`bench/results_direct_vs_gql.json`, 2026-11-02, same hardware, 300×3):
+
+| path | p50 | p95 | what it adds |
+|---|---|---|---|
+| direct ASGI call to the route | 0.20 ms | 0.24 ms | baseline — the same httpx ASGITransport the bridge's invoker uses |
+| GraphQL layer, steady state | 0.56 ms | 0.64 ms | **+0.36 ms** — pure orchestration; parse/validate served from the document cache |
+| GraphQL layer, first call per document | 1.15 ms | 1.70 ms | +0.95 ms one-time parse+validate, then cached forever |
+| full MCP chain (fastmcp in-memory client) | 1.34 ms | 1.59 ms | +0.78 ms over steady state — tool call + JSON wire |
+
+The first two rows isolate the GraphQL layer (both ride httpx
+ASGITransport, so the delta is orchestration, not an extra hop). The
+last row cross-checks the table above: 1.34 vs 1.39 ms on a re-run day,
+same stack. On any route that touches a database these are noise; the
+economy that matters for agents is turns.
+
 ## Error semantics
 
 One request that mixes a good field (stats) with a missing id (note 9999):
